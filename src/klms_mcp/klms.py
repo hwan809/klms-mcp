@@ -611,6 +611,11 @@ def login(timeout_seconds: int = 180, headless: bool = False) -> dict:
         )
         _persist_state.update(ts=0.0, snapshot=None)
         mirror = _mirror_cookies()
+        try:  # keepalive 를 켜 둔 사람만: GitHub Secret 을 새 쿠키로 바꾼다
+            from klms_mcp.keepalive import sync_after_login
+            mirror = sync_after_login() or mirror
+        except Exception as e:
+            mirror = f"keepalive 갱신 실패: {e}"
         return _ok({
             "cookies_count": len(cookies),
             "saved_to": str(_COOKIES_PATH),

@@ -3,6 +3,8 @@ klms-mcp install    -> install as a uv tool and register it in Codex (~/.codex/c
 klms-mcp uninstall  -> remove it from Codex config
 klms-mcp login      -> open Chrome for KAIST SSO login
 klms-mcp status     -> check whether the saved KLMS session is alive
+klms-mcp keepalive enable|disable|status
+                    -> keep the session alive from your private GitHub repo (Actions, hourly)
 """
 
 import json
@@ -104,6 +106,10 @@ def main():
         r = klms.login(timeout_seconds=180)
         print("로그인 완료" if r.get("success") else f"로그인 실패: {r.get('error')}")
         sys.exit(0 if r.get("success") else 1)
+    elif cmd == "keepalive":
+        from klms_mcp import keepalive
+        sub = sys.argv[2] if len(sys.argv) > 2 else "status"
+        {"enable": keepalive.enable, "disable": keepalive.disable, "status": keepalive.status}[sub]()
     elif cmd == "status":
         from klms_mcp import klms
         r = klms.check_session()
