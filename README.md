@@ -53,6 +53,20 @@ KLMS 세션은 3시간 동안 요청이 없으면 끊기고, 끊긴 뒤에는 KA
 세션이 끊겼으면 Codex가 `klms_login`으로 Chrome 창을 띄운다. 처음 로그인할 때 그 창에서 Chrome 비밀번호 저장을 해 두면, 다음부터는 자동 완성된 상태에서 로그인 버튼만 누르면 된다.
 터미널에서는 `klms-mcp status`로 세션을 확인하고 `klms-mcp login`으로 다시 로그인한다.
 
+### GitHub로 세션 살려 두기
+
+```sh
+klms-mcp keepalive enable
+```
+
+[GitHub CLI](https://cli.github.com/)로 내 계정에 private 리포 `klms-keepalive`를 만들고, GitHub Actions가 매시간 KLMS를 한 번 열어 세션이 끊기지 않게 한다. 노트북이 잠들어도 세션이 살아 있다.
+
+- Secret에는 klms.kaist.ac.kr 쿠키만 들어간다. KAIST SSO 쿠키는 올리지 않는다.
+- 이 쿠키는 내 KLMS 계정 접근권이다. 리포를 public으로 바꾸지 않는다.
+- 세션이 끊기면 워크플로가 실패하고 GitHub가 메일을 보낸다. `klms-mcp login`을 하면 Secret도 새 쿠키로 바뀐다.
+- private 리포 Actions 무료 한도(월 2,000분) 안에서 월 약 720분을 쓴다.
+- 끄기: `klms-mcp keepalive disable`
+
 ## 데이터
 
 - 쿠키, 상태, 로그인 브라우저 프로필은 모두 이 컴퓨터의 `~/.klms-mcp/`에만 있다. 다른 곳으로 보내지 않는다.
