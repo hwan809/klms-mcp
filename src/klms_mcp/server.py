@@ -1,6 +1,9 @@
 """KLMS MCP server: read-only KAIST KLMS tools for Codex and other MCP clients."""
 
+import re
+from pathlib import Path
 from typing import Optional
+from urllib.parse import unquote, urlparse
 
 from mcp.server.mcpserver import MCPServer
 
@@ -70,6 +73,46 @@ def klms_quiz_status(quiz_url: str) -> dict:
 @tool("전체 수강 과목의 다가오는 마감(과제 + 퀴즈)을 한 번에 조회합니다.")
 def klms_upcoming_deadlines(days_ahead: int = 14) -> dict:
     return klms.get_upcoming_deadlines(days_ahead=days_ahead)
+
+
+def _download(session, url: str, dest: Path) -> Path:
+    r = session.get(url, timeout=60, allow_redirects=True)
+    r.raise_for_status()
+    name = ""
+    cd = r.headers.get("Content-Disposition", "")
+    m = re.search(r"filename\*=UTF-8''([^;]+)", cd) or re.search(r'filename="?([^";]+)"?', cd)
+    if m:
+        name = unquote(m.group(1))
+    if not name:
+        name = unquote(urlparse(r.url).path.rsplit("/", 1)[-1]) or "attachment"
+    name = re.sub(r'[\\/:*?"<>|]', "_", name)
+    path = dest / name
+    path.write_bytes(r.content)
+    return path
+
+
+@tool("과제 설명에 첨부된 파일(문제지, 시작 코드 등)을 dest_dir 에 받습니다. dest_dir 은 작업 폴더의 절대 경로. 없으면 ~/.klms-mcp/downloads.")
+def klms_download_assignment(assign_url: str, dest_dir: Optional[str] = None) -> dict:
+    status = klms.get_assignment_status(assign_url)
+    if not status.get("success"):
+        return status
+    dest = Path(dest_dir).expanduser() if dest_dir else klms._SKILLS_DIR / "downloads"
+    dest.mkdir(parents=True, exist_ok=True)
+    session = klms._make_session()
+    saved, failed = [], []
+    for url in status.get("attachments", []):
+        try:
+            saved.append(str(_download(session, url, dest)))
+        except Exception as e:
+            failed.append({"url": url, "error": str(e)})
+    return {"success": True, "assignment": status.get("name") or status.get("title"),
+            "due_date": status.get("due_date"), "saved": saved, "failed": failed,
+            "message": f"첨부 {len(saved)}개 저장 → {dest}" + (f", 실패 {len(failed)}개" if failed else "")}
+
+
+@tool("수강 과목 자료실의 새 파일을 dest_dir 아래 과목별 폴더로 받습니다. 이미 받은 파일은 건너뜁니다. dest_dir 이 없으면 ~/.klms-mcp/downloads.")
+def klms_download_course_files(course_filter: Optional[str] = None, dest_dir: Optional[str] = None) -> dict:
+    return klms.download_new_files_fast(course_filter=course_filter, dest_dir=dest_dir)
 
 
 def serve():

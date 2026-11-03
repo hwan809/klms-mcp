@@ -4,20 +4,21 @@ Codex에서 KAIST KLMS를 조회하는 MCP 서버. 과목, 과제, 퀴즈, 공�
 
 ## 설치
 
-[uv](https://docs.astral.sh/uv/)와 Google Chrome이 필요하다.
+Codex 앱에 이 한 줄을 붙여 넣는다.
+
+> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. 그다음 평일 아침 9시마다 KLMS에서 새 과제를 확인하고, 새 과제가 있으면 `~/KLMS/과목명/과제명` 폴더에 첨부파일을 받고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 만드는 자동화를 만들어줘.
+
+터미널에서 직접 하려면 [uv](https://docs.astral.sh/uv/)와 Google Chrome을 준비하고:
 
 ```sh
 uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install
 ```
 
-또는 Codex에 그대로 말하면 된다.
-
-> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘.
-
 설치 명령이 하는 일:
 
 1. `uv tool install`로 `klms-mcp`를 설치한다.
-2. `~/.codex/config.toml`에 `[mcp_servers.klms]`를 등록하고 조회 도구를 자동 승인으로 둔다. 기존 설정은 `config.toml.bak-*`로 백업한다.
+2. `~/.codex/config.toml`에 `[mcp_servers.klms]`를 등록하고 도구를 자동 승인으로 둔다. 기존 설정은 `config.toml.bak-*`로 백업한다.
+3. Chrome 창을 띄워 KAIST SSO 로그인을 받는다.
 
 ## 사용
 
@@ -41,8 +42,16 @@ Codex를 새로 열고:
 | `klms_assignment_status` | 과제 상태 |
 | `klms_quiz_status` | 퀴즈 상태 |
 | `klms_upcoming_deadlines` | 다가오는 마감 |
+| `klms_download_assignment` | 과제 첨부파일 받기 |
+| `klms_download_course_files` | 과목 자료실 새 파일 받기 |
 
-과제 제출 같은 쓰기 도구는 없다.
+받기는 내 컴퓨터에만 저장한다. 과제 제출 같은 KLMS에 쓰는 도구는 없다.
+
+## 로그인 유지
+
+KLMS 세션은 3시간 동안 요청이 없으면 끊기고, 끊긴 뒤에는 KAIST SSO가 비밀번호를 다시 요구한다. 노트북이 밤새 잠들면 아침에는 보통 다시 로그인해야 한다.
+세션이 끊겼으면 Codex가 `klms_login`으로 Chrome 창을 띄운다. 처음 로그인할 때 그 창에서 Chrome 비밀번호 저장을 해 두면, 다음부터는 자동 완성된 상태에서 로그인 버튼만 누르면 된다.
+터미널에서는 `klms-mcp status`로 세션을 확인하고 `klms-mcp login`으로 다시 로그인한다.
 
 ## 데이터
 

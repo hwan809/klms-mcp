@@ -1,6 +1,8 @@
 """klms-mcp            -> run the MCP server (stdio)
 klms-mcp install    -> install as a uv tool and register it in Codex (~/.codex/config.toml)
 klms-mcp uninstall  -> remove it from Codex config
+klms-mcp login      -> open Chrome for KAIST SSO login
+klms-mcp status     -> check whether the saved KLMS session is alive
 """
 
 import json
@@ -74,7 +76,13 @@ def install():
         block += [f"\n[mcp_servers.{SERVER}.tools.{name}]", 'approval_mode = "approve"']
     cfg.write_text(_strip_server(old) + "\n".join(block) + "\n", encoding="utf-8")
     print(f"[3/3] Codex 설정에 등록: {cfg}")
-    print("\n완료. Codex 를 새로 열고 이렇게 말해 보세요:\n  KLMS 로그인하고 이번 주 마감 알려줘")
+
+    from klms_mcp import klms
+    if "--no-login" not in sys.argv and not klms.check_session().get("session_valid"):
+        print("\nChrome 창에서 KAIST SSO 로그인을 마쳐 주세요. (최대 3분)")
+        r = klms.login(timeout_seconds=180)
+        print("로그인 완료" if r.get("success") else f"로그인 실패: {r.get('error')} (나중에 klms_login 으로 다시)")
+    print("\n완료. Codex 새 대화에서 이렇게 말해 보세요:\n  이번 주 KLMS 마감 알려줘")
 
 
 def uninstall():
@@ -90,6 +98,17 @@ def main():
         install()
     elif cmd == "uninstall":
         uninstall()
+    elif cmd == "login":
+        from klms_mcp import klms
+        print("Chrome 창에서 KAIST SSO 로그인을 마쳐 주세요. (최대 3분)")
+        r = klms.login(timeout_seconds=180)
+        print("로그인 완료" if r.get("success") else f"로그인 실패: {r.get('error')}")
+        sys.exit(0 if r.get("success") else 1)
+    elif cmd == "status":
+        from klms_mcp import klms
+        r = klms.check_session()
+        print("세션 살아 있음" if r.get("session_valid") else f"로그인 필요: {r.get('error', '')}")
+        sys.exit(0 if r.get("session_valid") else 1)
     elif cmd == "serve":
         from klms_mcp.server import serve
         serve()
