@@ -57,39 +57,14 @@ _load_env()
 
 KLMS_BASE = os.environ.get("KLMS_BASE_URL", "https://klms.kaist.ac.kr").rstrip("/")
 _COOKIES_PATH = Path(os.environ.get("KLMS_COOKIES_PATH", "") or _SKILLS_DIR / "cookies.json")
-_NAS_DOWNLOAD_DIR = _SKILLS_DIR / "_nas_disabled"
 _LOCAL_DOWNLOAD_DIR = Path(os.environ.get("KLMS_DOWNLOAD_DIR", "") or _SKILLS_DIR / "downloads")
-_CAREER_LECTURES_DIR = _SKILLS_DIR / "downloads"
 
 _COURSE_FOLDER_MAP: dict[str, str] = {}
 
+
 def _get_download_dir() -> Path:
-    # career 가 정본이다. NAS 는 태블릿용 사본이라 _mirror_to_nas() 가 따로 채운다.
-    # 예전엔 NAS 가 붙어 있으면 NAS 로 받았고 중복 검사도 NAS 만 봤다 — 2026-09-23
-    # sweep 에서 career 에 이미 있던 33개가 전부 '새 파일' 로 다시 받아졌다.
-    if _CAREER_LECTURES_DIR.is_dir():
-        return _CAREER_LECTURES_DIR
+    """dest_dir 을 안 줬을 때 쓰는 기본 위치."""
     return _LOCAL_DOWNLOAD_DIR
-
-# 태블릿에서 볼 KLMS 자료만 NAS 로 복사한다. notes/ 는 내 필기라 넣지 않는다.
-_NAS_MIRROR_SUBDIRS = ("syllabus", "lectures", "assignments", "notices", "textbooks")
-
-
-def _mirror_to_nas(base: Path) -> list[Path]:
-    """career 의 KLMS 자료를 NAS 에 복사한다. 없거나 크기가 다른 파일만. 복사한 NAS 경로를 돌려준다."""
-    if not _NAS_DOWNLOAD_DIR.is_dir():
-        return []
-    copied: list[Path] = []
-    for folder in sorted(set(_COURSE_FOLDER_MAP.values())):
-        for sub in _NAS_MIRROR_SUBDIRS:
-            for src in _iter_course_files(base / folder / sub):
-                dst = _NAS_DOWNLOAD_DIR / src.relative_to(base)
-                if dst.is_file() and dst.stat().st_size == src.stat().st_size:
-                    continue
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, dst)
-                copied.append(dst)
-    return copied
 
 
 def _course_dest_dir(course_name: str, base: Path) -> Path:
@@ -610,7 +585,7 @@ def login(timeout_seconds: int = 180, headless: bool = False) -> dict:
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         _persist_state.update(ts=0.0, snapshot=None)
-        mirror = _mirror_cookies()
+        mirror = "꺼짐"
         try:  # keepalive 를 켜 둔 사람만: GitHub Secret 을 새 쿠키로 바꾼다
             from klms_mcp.keepalive import sync_after_login
             mirror = sync_after_login() or mirror
@@ -625,47 +600,6 @@ def login(timeout_seconds: int = 180, headless: bool = False) -> dict:
         })
     except Exception as e:
         return _err(str(e))
-
-
-# NAS 의 keepalive(nas/klms_keepalive_nas.py)가 읽는 쿠키 사본. Mac 이 잠들어도 세션을
-# 살려 두는 건 NAS 쪽이라, 로그인할 때마다 여기로 밀어 넣지 않으면 NAS 가 죽은 쿠키를 찌른다.
-# 빈 문자열로 두면 미러를 끈다.
-_COOKIES_MIRROR = os.environ.get("KLMS_COOKIES_MIRROR", "")
-
-
-def _mirror_cookies(src: Path = None, dest: str = None) -> str:
-    """cookies.json 을 NAS 로 scp 한다. 실패해도 로그인 자체는 성공으로 둔다.
-
-    결과는 state/mirror.log 에도 남긴다 — 2026-10-24 로그인 때 NAS 쪽 쿠키가 10/22 것으로
-    남아 있었는데 반환값만 보고 버려서 왜 실패했는지 알 수 없었다.
-    """
-    src = src or _COOKIES_PATH
-    dest = _COOKIES_MIRROR if dest is None else dest
-    if not dest:
-        return "꺼짐"
-    import subprocess
-    try:
-        r = subprocess.run(
-            # -O: 시놀로지는 SFTP 서브시스템이 꺼져 있어 기본 scp(SFTP)가 끊긴다.
-            ["scp", "-O", "-q", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes",
-             str(src), dest],
-            capture_output=True, text=True, timeout=30,
-        )
-    except Exception as e:
-        result = f"실패 ({type(e).__name__}: {e}) — 수동: scp -O {src} {dest}"
-    else:
-        if r.returncode != 0:
-            result = (f"실패 ({(r.stderr or '').strip()[:200]}) — 수동: "
-                      f"scp -O {src} {dest}")
-        else:
-            result = dest
-    try:
-        _STATE_DIR.mkdir(parents=True, exist_ok=True)
-        with open(_STATE_DIR / "mirror.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {src.name} → {result}\n")
-    except OSError:
-        pass
-    return result
 
 
 def session_age_hours() -> Optional[float]:
@@ -718,11 +652,9 @@ def keepalive() -> dict:
     """유휴 타이머를 리셋해 세션을 살려둔다.
 
     KLMS 세션은 절대 만료가 아니라 유휴 타임아웃(3시간)으로 죽는다. 그보다 짧은
-    주기로 가벼운 요청을 한 번씩 보내면 사실상 무기한 유지된다. launchd 의
-    com.secondary-agent.keepalive 가 30분마다 이 함수를 호출한다.
+    주기로 가벼운 요청을 한 번씩 보내면 사실상 무기한 유지된다.
 
-    이미 죽었으면 사람이 로그인하는 수밖에 없다(login() 주석 참조) — 여기서는
-    실패로 보고만 하고, 알림은 호출부(klms_keepalive.py)가 맡는다.
+    이미 죽었으면 사람이 로그인하는 수밖에 없다. 여기서는 실패로 보고만 한다.
 
     Returns:
         {"success": bool, "session_valid": bool, "idle_hours": float|None}
@@ -732,8 +664,7 @@ def keepalive() -> dict:
     try:
         valid, final_url, locked = _probe()
     except FileNotFoundError:
-        # 쿠키 파일이 아예 없는 것과 세션이 죽은 것은 할 일이 다르다. NAS 첫 기동처럼
-        # 파일을 아직 안 넣은 상황에서 '로그인하세요'만 오면 어디서 뭘 할지 알 수 없다.
+        # 쿠키 파일이 아예 없는 것과 세션이 죽은 것은 할 일이 다르다.
         return {"session_valid": False, "idle_hours": None, "final_url": "",
                 "checked_at": datetime.now(tz=timezone.utc).isoformat(),
                 "success": False,
@@ -1153,7 +1084,8 @@ def _existing_notice_file(out_dir: Path, url: str):
             text = path.read_text()
         except OSError:
             continue
-        if url in text:
+        # 'id=123' 이 'id=1234' 안에 들어 있다고 같은 공지로 치면 안 된다.
+        if re.search(re.escape(url) + r"(?![0-9])", text):
             return path, _NOTICE_MARKER in text
     return None, False
 
@@ -1301,12 +1233,12 @@ def get_course_notices(
                     ahref = _norm_url(a.get("href", ""))
                     if "mod/courseboard/article.php" not in ahref:
                         continue
-                    if ahref in known_urls and not include_seen:
-                        continue
-
-                    # 시딩 중이면 본문을 받지 않는다 — 기준선만 잡으면 되고,
-                    # 글마다 페이지를 여는 비용(과목당 수십 초)을 아낀다.
-                    if first_visit:
+                    # 이미 아는 글이나 처음 보는 과목의 기존 글은 '새 공지'로 알리지 않는다.
+                    # 그래도 저장 위치에 파일이 없으면 받아 둔다. 처음 쓰는 사람도
+                    # '중간고사 통계 공지 읽어줘' 같은 질문에 답할 수 있어야 한다.
+                    quiet = (first_visit or ahref in known_urls) and not include_seen
+                    if quiet and _existing_notice_file(
+                            _course_dest_dir(course_name, save_dir) / "notices", ahref)[0]:
                         known_urls.add(ahref)
                         continue
 
@@ -1321,9 +1253,12 @@ def get_course_notices(
                     posted_at = ""
                     for date_div in main.select("div.date"):
                         lbl = date_div.select_one("span.title")
-                        if lbl and "작성일" in lbl.get_text():
+                        if lbl and ("작성일" in lbl.get_text() or "Wrote" in lbl.get_text()):
+                            iso = _parse_kr_datetime(date_div.get_text(" ", strip=True))
                             dm = re.search(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", date_div.get_text())
-                            if dm:
+                            if iso:
+                                posted_at = iso[:10]
+                            elif dm:
                                 posted_at = f"{dm.group(1)}-{int(dm.group(2)):02d}-{int(dm.group(3)):02d}"
                             break
 
@@ -1342,7 +1277,8 @@ def get_course_notices(
                     notice["attachments"] = content["attachments"]
                     if saved:
                         notice["local_path"] = saved
-                    new_notices.append(notice)
+                    if not quiet:
+                        new_notices.append(notice)
                     known_urls.add(ahref)
 
             # 과목 단위로 저장한다. 마지막에 한 번만 저장하면 네트워크가 한 번 끊길 때
@@ -1969,10 +1905,33 @@ _KR_DATE = re.compile(
 )
 
 
+_KLMS_MONTHS = {m: i for i, m in enumerate(
+    ("january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"), 1)}
+# 영어 KLMS: 'Sunday, 8 November 2026, 11:59 PM'
+_KLMS_EN_DATETIME = re.compile(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s*([AP]M)", re.I)
+
+
+def _parse_en_datetime(text: str) -> Optional[str]:
+    text = text or ""
+    # 퀴즈 안내는 'opened ... / will close ...' 를 한 블록에 담는다. 마감 쪽을 먼저 본다.
+    cut = re.search(r"\b(close[sd]?|due)\b", text, re.I)
+    m = (cut and _KLMS_EN_DATETIME.search(text, cut.end())) or _KLMS_EN_DATETIME.search(text)
+    if not m or m.group(2).lower() not in _KLMS_MONTHS:
+        return None
+    day, month, year, hour, minute, ampm = m.groups()
+    hour = int(hour) % 12 + (12 if ampm.upper() == "PM" else 0)
+    try:
+        return datetime(int(year), _KLMS_MONTHS[month.lower()], int(day), hour, int(minute)).isoformat()
+    except ValueError:
+        return None
+
+
 def _parse_kr_datetime(text: str) -> Optional[str]:
+    """한국어와 영어 KLMS 날짜를 모두 읽는다."""
     m = _KR_DATE.search(text or "")
     if not m:
-        return None
+        return _parse_en_datetime(text)
     year, month, day, meridiem, hour, minute = m.groups()
     hour = int(hour)
     if meridiem == "오후" and hour != 12:
@@ -2222,6 +2181,8 @@ def _schedule_today() -> date:
 # 제출을 요구하는 말. 퀴즈·시험 공지와 갈라내려고 _SCHEDULE_KEYWORDS 와 따로 둔다 —
 # 저쪽은 '일정이 적힌 줄'을 찾는 그물이고, 이쪽은 '내가 낼 물건이 있는가'를 묻는다.
 # 굴절형을 놓치면 마감이 숨으므로 부분 문자열로 본다 ('submission', 'resubmit', '제출한').
+# 제출 상태 칸. 한국어 '시도하지 않음', 영어 'No attempt' / 'No submission'.
+_NOT_SUBMITTED = ("하지 않음", "No attempt", "No submission", "Not submitted")
 _SUBMIT_WORDS = ("submit", "submission", "제출", "due", "마감", "deadline", "hand in")
 
 
@@ -2231,26 +2192,8 @@ def _asks_for_a_submission(text: str) -> bool:
 
 
 def _already_submitted(course: str, due_iso: str) -> bool:
-    """todos.db 에 손으로 찍어둔 제출 기록이 있는지 본다.
-
-    KLMS 밖(Gradescope)에 낸 건은 KLMS 가 영영 모른다. 유일한 근거가 todos.db 라
-    여기서만 건너다본다. DB 가 없거나 스키마가 달라도 sweep 이 죽으면 안 되므로
-    조용히 '모른다'(=아직 안 냄)로 떨어진다.
-    """
-    folder = _COURSE_FOLDER_MAP.get(course)
-    if not folder:
-        return False
-    try:
-        from todo_skills import todo_db
-        from todo_skills.todo_models import TaskStatus
-        with todo_db.get_conn() as conn:
-            row = conn.execute(
-                "SELECT status FROM tasks WHERE source = 'klms' AND source_id = ?",
-                (f"notice_{folder}_{due_iso[:10]}",),
-            ).fetchone()
-        return bool(row) and row[0] == TaskStatus.DONE.value
-    except Exception:
-        return False
+    """KLMS 밖(Gradescope 등)에 낸 과제는 KLMS 가 모른다. 공개판은 따로 기록하지 않는다."""
+    return False
 
 
 # KLMS 는 마감을 '9월 16일 오전 12:00'(자정)으로, 공지 본문은 '9/15 23:59' 로 적는다.
@@ -2291,7 +2234,8 @@ def _same_deadline(hit: dict, covered: tuple[str, str, str]) -> bool:
 
 
 def _schedule_from_notices(base, days_ahead: int, today: Optional[date] = None,
-                           now: Optional[datetime] = None) -> list[dict]:
+                           now: Optional[datetime] = None,
+                           course_names: Optional[list[str]] = None) -> list[dict]:
     """로컬 공지에서 이 창 안에 드는 일정을 읽어낸다."""
     base = Path(base)
     if today is None:
@@ -2299,7 +2243,15 @@ def _schedule_from_notices(base, days_ahead: int, today: Optional[date] = None,
         if now is None and today == date.today():
             now = datetime.now()
     until = today + timedelta(days=days_ahead)
-    folder_to_course = {v: k for k, v in _COURSE_FOLDER_MAP.items()}
+    # 과목 폴더는 _course_dest_dir 이 과목명으로 만든다. 공지가 저장된 폴더를 전부 본다.
+    # 폴더명은 '/' 같은 글자를 '_' 로 바꾼 것이라, 원래 과목명으로 되돌려야 마감 중복 제거가 맞는다.
+    mapped = {_course_dest_dir(n, base).name: n for n in (course_names or [])}
+    mapped.update({v: k for k, v in _COURSE_FOLDER_MAP.items()})
+    folder_to_course = {
+        d.name: mapped.get(d.name, d.name)
+        for d in (sorted(base.iterdir()) if base.is_dir() else [])
+        if (d / "notices").is_dir() and (not course_names or d.name in mapped)
+    }
 
     hits: list[dict] = []
     past: set[tuple] = set()
@@ -2818,7 +2770,7 @@ def _resolve_external_links(
 ) -> list:
     """외부 링크마다 로컬에 있는지 확인하고, 없으면(fetch) 받아서 기록한다.
 
-    state 만 믿지 않는다 — NAS 가 언마운트되거나 파일을 지우면 기록은 남아도
+    state 만 믿지 않는다. 사용자가 파일을 지우거나 옮기면 기록은 남아도
     파일은 없다. 매번 실제 경로를 확인한다.
 
     status: saved(이미 있음) / fetched(방금 받음) / adopted(같은 내용의 기존
@@ -2968,9 +2920,7 @@ def get_grades() -> dict:
     grades: list[dict] = []
     errors: list[str] = []
     for c in courses["courses"]:
-        code = _COURSE_FOLDER_MAP.get(c["name"])
-        if not code:
-            continue
+        code = _COURSE_FOLDER_MAP.get(c["name"]) or c["name"]
         try:
             r = session.get(f"{KLMS_BASE}/grade/report/user/index.php?id={c['id']}",
                             timeout=HTTP_TIMEOUT)
@@ -3018,9 +2968,7 @@ def get_attendance() -> dict:
     out: dict[str, list[dict]] = {}
     errors: list[str] = []
     for c in courses["courses"]:
-        code = _COURSE_FOLDER_MAP.get(c["name"])
-        if not code:
-            continue
+        code = _COURSE_FOLDER_MAP.get(c["name"]) or c["name"]
         try:
             r = session.get(f"{KLMS_BASE}/local/lmsattendance/index.php?id={c['id']}",
                             timeout=HTTP_TIMEOUT)
@@ -3031,18 +2979,29 @@ def get_attendance() -> dict:
 
 
 def _record_grades(grades: list[dict]) -> list[dict]:
-    """todos.db 에 쌓고, 새로 나왔거나 바뀐 성적만 돌려준다. DB 가 없어도 sweep 은 산다."""
-    from todo_skills import todo_db
-    todo_db.init_db()
+    """성적을 state/grades.json 에 쌓고, 새로 나왔거나 바뀐 것만 돌려준다."""
+    seen = _load_state("grades")
+    # 처음 돌 때는 기준만 잡는다. 이미 있던 성적을 전부 '새 성적'으로 알리지 않는다.
+    # 성적이 하나도 없어도 기준을 잡았다는 표시는 남겨야 다음 첫 성적을 알린다.
+    first = not seen.get("_seeded")
+    seen["_seeded"] = True
     fresh = []
     for g in grades:
-        _, changed = todo_db.grade_upsert(
-            g["course"], g["item"], g["score"], g.get("max_score"),
-            g.get("average"), source="klms",
-        )
-        if changed:
-            fresh.append(g)
+        key = f"{g['course']}|{g['item']}"
+        val = [g.get("score"), g.get("max_score")]
+        if seen.get(key) != val:
+            if not first and g.get("score") not in (None, "", "-"):
+                fresh.append(g)
+            seen[key] = val
+    _save_state("grades", seen)
     return fresh
+
+
+def _course_names() -> list[str]:
+    try:
+        return [c["name"] for c in get_courses().get("courses", [])]
+    except Exception:
+        return []
 
 
 # ── 공개 API: 원샷 점검 ──────────────────────────────────────────────────
@@ -3062,7 +3021,7 @@ def sweep(
 
     Args:
         days_ahead:           마감 조회 범위 (기본 21일)
-        dest_dir:             다운로드 경로 (None이면 과목별 기본 경로)
+        dest_dir:             저장 위치. 그 아래 과목별 폴더에 lectures, assignments, notices 로 나눠 받는다.
         include_seen_notices: True 면 이미 확인한 공지도 함께 반환
         fetch_external:       True 면 과제 본문의 외부 문서(교재 PDF 등)도 받아둔다
 
@@ -3152,7 +3111,7 @@ def sweep(
     covered = [(d.get("course"), d.get("due_date_iso") or "", d.get("type") or "")
                for d in deadlines]
     from_notices = [
-        h for h in _schedule_from_notices(base_dir, days_ahead)
+        h for h in _schedule_from_notices(base_dir, days_ahead, course_names=_course_names())
         if not any(_same_deadline(h, c) for c in covered)
     ]
     for h in from_notices:
@@ -3182,12 +3141,12 @@ def sweep(
     unsubmitted = [
         d for d in deadlines
         if d.get("type") == "assign"
-        and ("하지 않음" in (d.get("submission_status") or "") or d.get("restricted"))
+        and (any(w in (d.get("submission_status") or "") for w in _NOT_SUBMITTED) or d.get("restricted"))
     ]
 
     external_submit = [d for d in deadlines if d.get("external_submit")]
 
-    # 4. 성적 — 알림에 안 뜨니 성적부를 직접 읽어 todos.db 에 쌓는다.
+    # 4. 성적: 알림에 안 뜨니 성적부를 직접 읽어 state 에 쌓는다.
     new_grades: list[dict] = []
     gr = get_grades()
     if gr.get("success"):
@@ -3199,21 +3158,6 @@ def sweep(
     else:
         warnings.append(f"성적부 조회 실패: {gr.get('error')}")
 
-    # 5. 출결 — 저장해 두고 바뀐 칸만 알린다. 성적 계산은 저장본을 읽는다.
-    attendance_changes: list[dict] = []
-    at = get_attendance()
-    if at.get("success"):
-        warnings.extend(f"출결표: {e}" for e in at.get("errors", []))
-        try:
-            from todo_skills import todo_db
-            todo_db.init_db()
-            for code, rows in at.get("attendance", {}).items():
-                attendance_changes += todo_db.attendance_store(code, rows)
-        except Exception as e:
-            warnings.append(f"출결 기록 실패: {e}")
-    else:
-        warnings.append(f"출결표 조회 실패: {at.get('error')}")
-
     summary = {
         "new_files": len(downloaded),
         "updated_files": len(updated),
@@ -3224,7 +3168,6 @@ def sweep(
         "notice_schedule": len(from_notices),
         "external_fetched": external_fetched,
         "new_grades": len(new_grades),
-        "attendance_changes": len(attendance_changes),
         "warnings": len(warnings),
     }
     bits = [
@@ -3241,19 +3184,8 @@ def sweep(
         bits.append(f"외부 자료 {external_fetched}개")
     if new_grades:
         bits.append(f"새 성적 {len(new_grades)}건")
-    if attendance_changes:
-        bits.append(f"출결 변동 {len(attendance_changes)}건")
     if warnings:
         bits.append(f"경고 {len(warnings)}건")
-
-    # 태블릿용 사본. 정본(career)에 받은 뒤에 한 번에 맞춘다.
-    try:
-        mirrored = len(_mirror_to_nas(base_dir))
-    except OSError as e:
-        mirrored = 0
-        warnings.append(f"NAS 사본 복사 실패: {e}")
-    summary["nas_mirrored"] = mirrored
-    summary["warnings"] = len(warnings)
 
     return _ok({
         "summary": summary,
@@ -3262,7 +3194,6 @@ def sweep(
         "notices": notices,
         "deadlines": deadlines,
         "new_grades": new_grades,
-        "attendance_changes": attendance_changes,
         "warnings": warnings,
         "message": ", ".join(bits),
     })

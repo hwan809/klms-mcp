@@ -4,14 +4,20 @@ Codex에서 KAIST KLMS를 조회하는 MCP 서버. 과목, 과제, 퀴즈, 공�
 
 ## 설치
 
-Codex 앱에 이 한 줄을 붙여 넣는다.
+1. 빈 폴더를 하나 만든다. 예: `~/KLMS`
+2. Codex 앱에서 그 폴더를 프로젝트로 연다.
+3. 새 대화에 아래를 붙여 넣는다.
 
-> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. 그다음 평일 아침 9시마다 KLMS에서 새 과제를 확인하고, 새 과제가 있으면 `~/KLMS/과목명/과제명` 폴더에 첨부파일을 받고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 만드는 자동화를 만들어줘.
+> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. 끝나면 `klms-mcp keepalive enable`도 실행해줘.
+> 그다음 이 프로젝트에 평일 아침 9시 자동화를 만들어줘. KLMS MCP의 `klms_sweep`을 `dest_dir`를 이 프로젝트 폴더로 해서 돌리고, 마감이 남은 과제마다 `과목/과제명` 폴더에 첨부를 모으고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 써줘.
+
+로그인 창이 두 번 뜬다. Chrome에서 KAIST SSO 로그인을 한 번, 브라우저에서 GitHub 로그인 승인을 한 번 하면 된다. GitHub 코드는 클립보드에 들어가 있어서 붙여 넣기만 하면 된다.
 
 터미널에서 직접 하려면 [uv](https://docs.astral.sh/uv/)와 Google Chrome을 준비하고:
 
 ```sh
 uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install
+klms-mcp keepalive enable   # 선택: 노트북이 잠들어도 세션 유지
 ```
 
 설치 명령이 하는 일:
@@ -44,6 +50,9 @@ Codex를 새로 열고:
 | `klms_upcoming_deadlines` | 다가오는 마감 |
 | `klms_download_assignment` | 과제 첨부파일 받기 |
 | `klms_download_course_files` | 과목 자료실 새 파일 받기 |
+| `klms_sweep` | 한 번에 점검: 새 자료와 과제 첨부 받기, 공지 전문 저장, 마감과 과제 본문, 공지에 적힌 일정, 새 성적 |
+
+`klms_sweep`와 받기 도구는 `dest_dir` 아래에 `과목/lectures`, `과목/assignments`, `과목/notices`로 나눠 저장한다. Codex 프로젝트 폴더를 `dest_dir`로 주면 그 프로젝트에서 바로 "수리통계학 중간고사 분포 보고 기말 공부법 알려줘" 같은 질문을 할 수 있다. 처음 돌 때는 기존 공지를 전부 파일로 받아 두지만 "새 공지"로 알리지는 않는다.
 
 받기는 내 컴퓨터에만 저장한다. 과제 제출 같은 KLMS에 쓰는 도구는 없다.
 
@@ -59,12 +68,14 @@ KLMS 세션은 3시간 동안 요청이 없으면 끊기고, 끊긴 뒤에는 KA
 klms-mcp keepalive enable
 ```
 
-[GitHub CLI](https://cli.github.com/)로 내 계정에 private 리포 `klms-keepalive`를 만들고, GitHub Actions가 매시간 KLMS를 한 번 열어 세션이 끊기지 않게 한다. 노트북이 잠들어도 세션이 살아 있다.
+GitHub 계정이 필요하다. [GitHub CLI](https://cli.github.com/)가 없으면 Homebrew(macOS)나 winget(Windows)으로 설치하고, 로그인이 안 돼 있으면 브라우저 승인 창을 연다. 승인 코드는 클립보드에 넣어 둔다. 그다음 내 계정에 private 리포 `klms-keepalive`를 만들고, GitHub Actions가 30분마다 KLMS를 한 번 열어 세션이 끊기지 않게 한다.
 
 - Secret에는 klms.kaist.ac.kr 쿠키만 들어간다. KAIST SSO 쿠키는 올리지 않는다.
 - 이 쿠키는 내 KLMS 계정 접근권이다. 리포를 public으로 바꾸지 않는다.
-- 세션이 끊기면 워크플로가 실패하고 GitHub가 메일을 보낸다. `klms-mcp login`을 하면 Secret도 새 쿠키로 바뀐다.
-- private 리포 Actions 무료 한도(월 2,000분) 안에서 월 약 720분을 쓴다.
+- `klms-mcp login`(또는 Codex의 `klms_login`)을 하면 Secret도 새 쿠키로 바뀐다. 다른 컴퓨터나 다른 `KLMS_MCP_HOME`에서 켰어도 내 계정의 `klms-keepalive` 리포를 찾아서 바꾼다.
+- 세션이 끊기면 워크플로가 실패하고 GitHub가 메일을 보낸다.
+- 한계: GitHub는 예약 실행을 자주 건너뛴다. 실측으로 하루에 한두 번만 돈 날도 있었다. 노트북이 3시간 넘게 잠들면 다시 로그인해야 할 수 있다.
+- private 리포 Actions 무료 한도(월 2,000분) 안에서 많아야 월 약 1,440분을 쓴다.
 - 끄기: `klms-mcp keepalive disable`
 
 ## 데이터

@@ -11,7 +11,7 @@ from klms_mcp import klms
 
 mcp = MCPServer(
     name="klms",
-    description="KAIST KLMS (Moodle) 조회 도구: 과목, 과제, 퀴즈, 공지, 알림, 마감",
+    description="KAIST KLMS (Moodle) 조회 도구: 과목, 과제, 퀴즈, 공지, 알림, 마감, 한 번에 점검(klms_sweep)",
 )
 
 # Codex 설정에서 자동 승인할 도구. 모두 읽기 전용이고, klms_login 은 내 노트북에 로그인 창만 띄운다.
@@ -50,9 +50,12 @@ def klms_get_notifications(limit: int = 20) -> dict:
     return klms.get_notifications(limit=limit)
 
 
-@tool("수강 과목 공지 게시판 글을 가져옵니다. 기본은 새 글만, include_seen=True 면 이미 확인한 공지까지 전부.")
-def klms_get_notices(course_filter: Optional[str] = None, include_seen: bool = False) -> dict:
-    return klms.get_course_notices(course_filter=course_filter, include_seen=include_seen)
+@tool("수강 과목 공지 게시판 글을 가져옵니다. 기본은 새 글만, include_seen=True 면 이미 확인한 공지까지 전부. "
+      "dest_dir 을 주면 공지 전문을 <dest_dir>/<과목>/notices/ 에 마크다운으로 남깁니다.")
+def klms_get_notices(course_filter: Optional[str] = None, include_seen: bool = False,
+                     dest_dir: Optional[str] = None) -> dict:
+    return klms.get_course_notices(course_filter=course_filter, include_seen=include_seen,
+                                   dest_dir=str(Path(dest_dir).expanduser()) if dest_dir else None)
 
 
 @tool("과목 전체 콘텐츠(섹션, 모듈, 파일)를 한 번에 조회합니다. course_id 는 KLMS 과목 ID(예: '184848').")
@@ -113,6 +116,18 @@ def klms_download_assignment(assign_url: str, dest_dir: Optional[str] = None) ->
 @tool("수강 과목 자료실의 새 파일을 dest_dir 아래 과목별 폴더로 받습니다. 이미 받은 파일은 건너뜁니다. dest_dir 이 없으면 ~/.klms-mcp/downloads.")
 def klms_download_course_files(course_filter: Optional[str] = None, dest_dir: Optional[str] = None) -> dict:
     return klms.download_new_files_fast(course_filter=course_filter, dest_dir=dest_dir)
+
+
+@tool("KLMS 전체를 한 번에 점검합니다. 새 강의 자료와 과제 첨부를 받고, 공지 전문을 저장하고, "
+      "마감(과제 본문과 첨부 포함), 공지에 적힌 일정, 새 성적을 돌려줍니다. "
+      "받은 파일은 <dest_dir>/<과목>/{lectures,assignments,notices}/ 로 나뉩니다. "
+      "'KLMS 확인', 'KLMS 정리' 같은 요청에는 개별 도구 대신 이 도구 하나를 쓰세요. "
+      "dest_dir 은 작업 폴더(프로젝트)의 절대 경로를 넘기세요. 없으면 ~/.klms-mcp/downloads.")
+def klms_sweep(days_ahead: int = 21, dest_dir: Optional[str] = None,
+               include_seen_notices: bool = False, fetch_external: bool = True) -> dict:
+    return klms.sweep(days_ahead=days_ahead,
+                      dest_dir=str(Path(dest_dir).expanduser()) if dest_dir else None,
+                      include_seen_notices=include_seen_notices, fetch_external=fetch_external)
 
 
 def serve():

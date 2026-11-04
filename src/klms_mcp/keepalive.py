@@ -9,9 +9,12 @@ Only the klms.kaist.ac.kr cookies go to the repo secret, never the SSO cookies.
 
 import base64
 import json
+import os
+import re
 import shutil
 import subprocess
 import time
+import webbrowser
 
 from klms_mcp import klms
 
@@ -24,8 +27,14 @@ WORKFLOW = """name: klms-keepalive
 
 on:
   schedule:
-    - cron: "17 * * * *"   # every hour; KLMS drops idle sessions after 3 hours
+    # KLMS drops idle sessions after 3 hours. GitHub skips many scheduled runs,
+    # so ask twice an hour (at most ~1,440 min/month, under the free 2,000).
+    - cron: "7,37 * * * *"
   workflow_dispatch:
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
 
 permissions: {}
 
@@ -62,6 +71,54 @@ def _gh(*args, input=None, check=True):
     return subprocess.run(["gh", *args], input=input, capture_output=True, text=True, check=check)
 
 
+def _install_gh():
+    """gh 가 없으면 패키지 관리자로 깐다. 깔 방법이 없으면 안내하고 멈춘다."""
+    if shutil.which("brew"):
+        cmd = ["brew", "install", "gh"]
+    elif shutil.which("winget"):
+        cmd = ["winget", "install", "--id", "GitHub.cli", "-e", "--silent"]
+    else:
+        raise SystemExit("GitHub CLI(gh)가 필요합니다. https://cli.github.com 에서 설치한 뒤 다시 실행하세요.")
+    print(f"GitHub CLI 설치: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+    if not shutil.which("gh"):
+        raise SystemExit("gh 를 설치했지만 PATH 에서 찾지 못했습니다. 새 터미널에서 다시 실행하세요.")
+
+
+def _device_login(args: list[str]):
+    """gh 의 브라우저 로그인. Codex 같은 비대화형 셸에서도 되도록 코드를 클립보드에 넣고 창을 연다."""
+    p = subprocess.Popen(["gh", *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True, env={**os.environ, "BROWSER": "true"})
+    opened = False
+    for line in p.stdout:
+        m = re.search(r"one-time code: ([A-Z0-9]{4}-[A-Z0-9]{4})", line)
+        if m and not opened:
+            code = m.group(1)
+            for clip in (["pbcopy"], ["clip"], ["wl-copy"], ["xclip", "-selection", "clipboard"]):
+                if shutil.which(clip[0]):
+                    subprocess.run(clip, input=code, text=True, check=False)
+                    break
+            print(f"브라우저에서 GitHub 로그인 후 코드 {code} 를 붙여 넣고 Authorize 를 누르세요. (코드는 클립보드에 있음)",
+                  flush=True)
+            webbrowser.open("https://github.com/login/device")
+            opened = True
+    if p.wait() != 0:
+        raise SystemExit("GitHub 로그인이 끝나지 않았습니다. 다시 실행하세요.")
+
+
+def ensure_gh():
+    """gh 설치, 로그인, workflow 권한까지 확인한다. 워크플로 파일을 올리려면 workflow 권한이 필요하다."""
+    if not shutil.which("gh"):
+        _install_gh()
+    # --active: 여러 계정이 등록돼 있으면 비활성 계정 권한까지 출력되므로 지금 쓰는 계정만 본다.
+    st = _gh("auth", "status", "--active", "--hostname", "github.com", check=False)
+    if st.returncode != 0:
+        _device_login(["auth", "login", "--hostname", "github.com", "--git-protocol", "https",
+                       "--web", "--scopes", "workflow"])
+    elif "'workflow'" not in st.stdout + st.stderr:
+        _device_login(["auth", "refresh", "--hostname", "github.com", "--scopes", "workflow"])
+
+
 def _cookie_header() -> str:
     cookies = [c for c in klms._load_cookies() if "klms.kaist.ac.kr" in c.get("domain", "")]
     if not cookies:
@@ -77,16 +134,36 @@ def _put_file(repo: str, path: str, content: str, message: str):
     _gh("api", "-X", "PUT", f"repos/{repo}/contents/{path}", "--input", "-", input=json.dumps(body))
 
 
+def _is_private(repo: str) -> bool:
+    vis = _gh("repo", "view", repo, "--json", "visibility", "--jq", ".visibility", check=False).stdout.strip()
+    return vis == "PRIVATE"
+
+
 def push_secret(repo: str):
+    # 쿠키는 계정 접근권이다. 어떤 경로로 불려도 private 리포에만 넣는다.
+    if not _is_private(repo):
+        raise SystemExit(f"{repo} 가 private 이 아닙니다. 쿠키를 넣을 수 없습니다.")
     # stdin 으로 넘겨서 값이 명령줄, 로그, 화면 어디에도 남지 않게 한다.
     _gh("secret", "set", SECRET, "--repo", repo, input=_cookie_header())
 
 
 def _repo() -> str | None:
     try:
-        return json.loads(STATE.read_text())["repo"]
+        st = json.loads(STATE.read_text())
+        return None if st.get("disabled") else st["repo"]
     except (OSError, ValueError, KeyError):
+        pass
+    # 상태 파일이 없어도(다른 KLMS_MCP_HOME 에서 켰거나 지워졌을 때) 내 계정에 keepalive 리포가
+    # 있으면 그걸 쓴다. 이게 없어서 다시 로그인해도 Secret 이 옛 쿠키로 남은 적이 있다.
+    if not shutil.which("gh"):
         return None
+    user = _gh("api", "user", "--jq", ".login", check=False).stdout.strip()
+    repo = f"{user}/{REPO_NAME}"
+    if (user and _is_private(repo)
+            and _gh("api", f"repos/{repo}/contents/{WORKFLOW_PATH}", "--jq", ".sha", check=False).returncode == 0):
+        STATE.write_text(json.dumps({"repo": repo}))
+        return repo
+    return None
 
 
 def sync_after_login():
@@ -99,6 +176,8 @@ def sync_after_login():
         return repo
     except subprocess.CalledProcessError as e:
         return f"실패: {e.stderr.strip()[:200]}"
+    except SystemExit as e:
+        return f"건너뜀: {e}"
 
 
 def _latest_run(repo: str):
@@ -109,12 +188,9 @@ def _latest_run(repo: str):
 
 
 def enable():
-    if not shutil.which("gh"):
-        raise SystemExit("GitHub CLI(gh)가 필요합니다: brew install gh && gh auth login")
-    if _gh("auth", "status", check=False).returncode != 0:
-        raise SystemExit("gh 로그인이 필요합니다: gh auth login")
     if not klms.check_session().get("session_valid"):
         raise SystemExit("KLMS 세션이 없습니다. 먼저 klms-mcp login")
+    ensure_gh()
 
     user = _gh("api", "user", "--jq", ".login").stdout.strip()
     repo = f"{user}/{REPO_NAME}"
@@ -122,8 +198,7 @@ def enable():
         print(f"[1/4] private 리포 만들기: {repo}")
         _gh("repo", "create", repo, "--private", "--description", "KLMS session keepalive (klms-mcp)")
     else:
-        vis = _gh("repo", "view", repo, "--json", "visibility", "--jq", ".visibility").stdout.strip()
-        if vis != "PRIVATE":
+        if not _is_private(repo):
             raise SystemExit(f"{repo} 가 private 이 아닙니다. 쿠키를 넣을 수 없습니다.")
         print(f"[1/4] 기존 private 리포 사용: {repo}")
 
@@ -165,7 +240,7 @@ def disable():
         return
     _gh("secret", "delete", SECRET, "--repo", repo, check=False)
     _gh("workflow", "disable", "keepalive.yml", "--repo", repo, check=False)
-    STATE.unlink(missing_ok=True)
+    STATE.write_text(json.dumps({"repo": repo, "disabled": True}))
     print(f"껐습니다. Secret 을 지우고 워크플로를 멈췄습니다. 리포까지 지우려면: gh repo delete {repo}")
 
 
