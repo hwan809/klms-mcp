@@ -2159,6 +2159,41 @@ _RELEASE_LABEL = re.compile(
     r"\b(?:out|released?|posted|uploaded)\b|공개|게시|출제", re.I)
 
 
+_ASSIGN_WORDS = {"hw": "homework", "homework": "homework", "assignment": "assignment",
+                 "assign": "assignment", "pa": "assignment", "lab": "lab", "project": "project",
+                 "과제": "homework", "숙제": "homework", "실습": "lab", "프로젝트": "project"}
+
+
+def _assign_key(text: str):
+    """'HW7 Released' -> ('homework', '7'). 번호와 과제 종류가 둘 다 있어야 한다."""
+    low = text.lower()
+    num = re.search(r"\d+", low)
+    kinds = {_ASSIGN_WORDS[w] for w in re.findall(r"[a-z]+|[가-힣]+", low) if w in _ASSIGN_WORDS}
+    m = re.search(r"\b(hw|pa)\s*\d", low)  # 'HW7' 처럼 붙여 쓴 것
+    if m:
+        kinds.add(_ASSIGN_WORDS[m.group(1)])
+    return (kinds, num.group(0)) if num and kinds else None
+
+
+def _deadline_title(notice_title: str, klms_assigns: list[str]) -> str:
+    """공지에서 읽은 제출 마감의 이름. KLMS 과제 이름이 있으면 그것, 없으면 공지 제목.
+
+    실측 2026-11-04: 이름이 마감 문장('Submit to Gradescope by Wednesday')이라
+    과제 폴더 이름이 문장이 됐다.
+    """
+    key = _assign_key(notice_title or "")
+    if key:
+        hits = [a for a in klms_assigns
+                if (k := _assign_key(a)) and k[1] == key[1] and k[0] & key[0]]
+        if len(hits) == 1:
+            return hits[0]
+    title = re.sub(r"^\s*\[[^\]]*\]\s*", "", notice_title or "")
+    title = _RELEASE_LABEL.sub("", title)
+    title = re.sub(r"\s+(?:is|are|has been|have been)\s*$", "", re.sub(r"\s{2,}", " ", title))
+    title = title.strip(" -:,.")
+    return title or (notice_title or "").strip()
+
+
 def _clause_before(line: str, start: int, prev_end: int = 0) -> str:
     """날짜 바로 앞, 앞 날짜나 문장 끝 이후의 글자. 앞 문장의 말이 섞이지 않는다."""
     head = line[prev_end:start].split("/")[-1]
@@ -2449,6 +2484,8 @@ def get_upcoming_deadlines(days_ahead: int = 14) -> dict:
         session = _make_session()
         deadlines = []
         notes = []
+        # 공지에서 읽은 마감에 KLMS 과제 이름을 붙일 때 쓴다. 지난 과제도 포함.
+        assign_names: dict[str, list[str]] = {}
 
         for course in courses_result["courses"]:
             cname = course["name"]
@@ -2459,6 +2496,7 @@ def get_upcoming_deadlines(days_ahead: int = 14) -> dict:
 
             activities = acts.get("activities", [])
             assigns = [a for a in activities if a.get("type") == "assign"]
+            assign_names[cname] = [a.get("name", "") for a in assigns if a.get("name")]
             quizzes = [a for a in activities if a.get("type") == "quiz"]
             ltis = [a for a in activities
                     if a.get("type") == "lti" and _is_graded_lti(a)]
@@ -2577,6 +2615,7 @@ def get_upcoming_deadlines(days_ahead: int = 14) -> dict:
         return _ok({
             "deadlines": deadlines,
             "count": len(deadlines),
+            "assign_names": assign_names,
             "notes": notes,
             "message": f"마감 {len(deadlines)}건" + (f", 참고 {len(notes)}건" if notes else ""),
         })
@@ -3094,6 +3133,7 @@ def sweep(
     deadlines: list[dict] = []
     external_fetched = 0
     dd = get_upcoming_deadlines(days_ahead=days_ahead)
+    assign_names = dd.get("assign_names", {}) if dd.get("success") else {}
     if dd.get("success"):
         deadlines = dd.get("deadlines", [])
         warnings.extend(dd.get("notes", []))
@@ -3153,6 +3193,10 @@ def sweep(
                      or _asks_for_a_submission(h["due_date"]))
             and not _already_submitted(h["course"], h["due_date_iso"])
         )
+        if h["external_submit"]:
+            h["label"] = h["name"]
+            h["name"] = _deadline_title(h.get("notice_title", ""),
+                                        assign_names.get(h["course"], []))
     deadlines = sorted(deadlines + from_notices,
                        key=lambda d: d.get("due_date_iso") or "9999")
 
