@@ -20,7 +20,14 @@ It only reads KLMS. There is no tool that submits or changes anything.
 2. Open that folder as a project in the Codex app.
 3. Paste this into a new chat:
 
-> Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` (install uv first if it's missing) and wait until I finish the KLMS login in Chrome. Then run `klms-mcp sweep --dest .` to pull my KLMS into this folder now. klms-mcp needs network access, so run its commands outside the sandbox. Using `_klms/last_sweep.json`, for each assignment still due, make a `<course>/<assignment>` folder with its attachments and a START_HERE.md (deadline, submission format, what to do). Then run `klms-mcp dashboard --open`. Finally, create a weekday 9 AM automation in this project that runs KLMS MCP's `klms_sweep` with `dest_dir` set to this folder, repeats the assignment setup, runs `klms-mcp dashboard`, and tells me what's new.
+```text
+Set up KLMS in this folder. Do every step in order without stopping to ask me; my only job is the KAIST login in Chrome.
+1. Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` outside the sandbox (install uv first if it's missing). It opens Chrome and keeps running until I log in (up to 3 min). Keep waiting on that same command until it exits. Don't check the browser yourself.
+2. Run `klms-mcp sweep --dest .` outside the sandbox and wait until it exits (up to 10 min).
+3. Read `_klms/last_sweep.json`. For each unsubmitted assignment (skip quizzes and exams), make a `<course>/<name>` folder, copy its attachments there, and write a START_HERE.md (deadline, submission format, what to do).
+4. Run `klms-mcp dashboard --open`.
+5. Create a weekday 9 AM automation in this project that runs KLMS MCP's `klms_sweep` with `dest_dir` set to this folder, repeats step 3, runs `klms-mcp dashboard`, and tells me what's new.
+```
 
 A Chrome window opens for KAIST SSO. Finish the login there (including 2FA). The first sweep takes about 10 minutes, then the dashboard opens in your browser.
 

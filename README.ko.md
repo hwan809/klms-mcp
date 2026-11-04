@@ -20,7 +20,14 @@ KLMS는 읽기만 합니다. 과제 제출처럼 KLMS에 무언가를 쓰는 도
 2. Codex 앱에서 그 폴더를 프로젝트로 엽니다.
 3. 새 대화에 아래를 붙여 넣습니다.
 
-> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. Chrome에서 내가 KLMS 로그인을 마칠 때까지 기다린 다음 `klms-mcp sweep --dest .`로 지금 바로 KLMS를 이 폴더에 받아줘. klms-mcp는 네트워크가 필요하니 샌드박스 밖에서 실행해줘. `_klms/last_sweep.json`을 보고 마감이 남은 과제마다 `과목/과제명` 폴더에 첨부를 모으고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 써줘. 그리고 `klms-mcp dashboard --open`을 실행해줘. 마지막으로 이 프로젝트에 평일 아침 9시 자동화를 만들어줘. KLMS MCP의 `klms_sweep`을 `dest_dir`를 이 폴더로 해서 돌리고, 과제 정리를 똑같이 하고, `klms-mcp dashboard`를 실행하고, 새로 생긴 것을 알려줘.
+```text
+이 폴더에 KLMS를 설정해줘. 아래 단계를 순서대로, 중간에 나한테 묻지 말고 끝까지 해줘. 나는 Chrome에서 KAIST 로그인만 할게.
+1. `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install`을 샌드박스 밖에서 실행해줘(uv가 없으면 먼저 설치). Chrome이 열리고 내가 로그인할 때까지(최대 3분) 계속 실행돼. 그 명령이 끝날 때까지 기다려줘. 브라우저를 직접 확인하지는 마.
+2. `klms-mcp sweep --dest .`을 샌드박스 밖에서 실행하고 끝날 때까지 기다려줘(최대 10분).
+3. `_klms/last_sweep.json`을 읽고, 제출하지 않은 과제마다(퀴즈와 시험은 빼고) `과목/이름` 폴더를 만들어 첨부를 복사하고 START_HERE.md(마감, 제출 형식, 할 일)를 써줘.
+4. `klms-mcp dashboard --open`을 실행해줘.
+5. 이 프로젝트에 평일 아침 9시 자동화를 만들어줘. KLMS MCP의 `klms_sweep`을 `dest_dir`를 이 폴더로 해서 돌리고, 3단계를 똑같이 하고, `klms-mcp dashboard`를 실행하고, 새로 생긴 것을 알려줘.
+```
 
 Chrome 창이 뜨면 KAIST SSO 로그인(2단계 인증 포함)을 마칩니다. 첫 점검은 10분 정도 걸리고, 끝나면 브라우저에 대시보드가 뜹니다.
 
