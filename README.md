@@ -1,92 +1,143 @@
 # klms-mcp
 
-Codex에서 KAIST KLMS를 조회하는 MCP 서버. 과목, 과제, 퀴즈, 공지, 알림, 마감을 읽기만 한다.
+**Let Codex read your KAIST KLMS.** Courses, assignments, quizzes, notices, files, and deadlines, as MCP tools.
 
-## 설치
+[한국어](README.ko.md)
 
-1. 빈 폴더를 하나 만든다. 예: `~/KLMS`
-2. Codex 앱에서 그 폴더를 프로젝트로 연다.
-3. 새 대화에 아래를 붙여 넣는다.
+![Codex logs in to KLMS and lists this week's deadlines](docs/demo.gif)
 
-> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. 끝나면 `klms-mcp keepalive enable --public`도 실행해줘.
-> 그다음 이 프로젝트에 평일 아침 9시 자동화를 만들어줘. KLMS MCP의 `klms_sweep`을 `dest_dir`를 이 프로젝트 폴더로 해서 돌리고, 마감이 남은 과제마다 `과목/과제명` 폴더에 첨부를 모으고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 써줘.
+You log in once with KAIST SSO in a Chrome window. After that, Codex can answer questions like these from your real KLMS data:
 
-로그인 창이 두 번 뜬다. Chrome에서 KAIST SSO 로그인을 한 번, 브라우저에서 GitHub 로그인 승인을 한 번 하면 된다. GitHub 코드는 클립보드에 들어가 있어서 붙여 넣기만 하면 된다.
+- "What's due this week?"
+- "Look at the Mathematical Statistics midterm distribution and tell me how to study for the final."
+- "Set up Assignment 4: download its files and write a START_HERE.md."
 
-터미널에서 직접 하려면 [uv](https://docs.astral.sh/uv/)와 Google Chrome을 준비하고:
+It only reads KLMS. There is no tool that submits or changes anything.
 
-```sh
-uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install
-klms-mcp keepalive enable --public   # 선택: 노트북이 잠들어도 세션 유지
+## Quick start (Codex app)
+
+1. Make an empty folder, for example `~/KLMS`.
+2. Open that folder as a project in the Codex app.
+3. Paste this into a new chat:
+
+> Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` (install uv first if it's missing). Then create a weekday 9 AM automation in this project: run KLMS MCP's `klms_sweep` with `dest_dir` set to this project folder, and for each assignment still due, put its attachments in a `<course>/<assignment>` folder with a START_HERE.md covering the deadline, submission format, and what to do.
+
+A Chrome window opens for KAIST SSO. Finish the login there (including 2FA). The first sweep takes about 10 minutes.
+
+### What you get
+
+```
+~/KLMS
+├── Introduction to Deep Learning
+│   ├── lectures/          lecture slides and course files
+│   ├── assignments/       assignment attachments
+│   ├── notices/           every notice, saved as Markdown
+│   └── Assignment 4/
+│       ├── 2026F_CS371_assignment4.ipynb
+│       └── START_HERE.md  deadline, late policy, submission format, every TODO
+├── Mathematical Statistics
+│   └── ...
+└── ...
 ```
 
-설치 명령이 하는 일:
+Every weekday at 9 AM, Codex checks KLMS again and sets up new assignments. Because the notices and lecture files live in the project, you can ask about them directly in that project.
 
-1. `uv tool install`로 `klms-mcp`를 설치한다.
-2. `~/.codex/config.toml`에 `[mcp_servers.klms]`를 등록하고 도구를 자동 승인으로 둔다. 기존 설정은 `config.toml.bak-*`로 백업한다.
-3. Chrome 창을 띄워 KAIST SSO 로그인을 받는다.
+Deadlines come from both KLMS activities and notice text, so you also see things like "Submit to Gradescope by Wednesday" that never show up as a KLMS assignment.
 
-## 사용
+## Requirements
 
-Codex를 새로 열고:
+- [Codex](https://openai.com/codex/) (app or CLI). Other MCP clients work too, see below.
+- Google Chrome or Microsoft Edge for the login window. Without either, `uvx --from playwright playwright install chromium` gets a browser.
+- [uv](https://docs.astral.sh/uv/). The prompt above installs it if missing.
+- Tested on macOS.
 
-> KLMS 로그인하고 이번 주 마감 알려줘
+## Staying logged in
 
-처음 한 번은 Chrome 창이 뜬다. 창에서 KAIST SSO 로그인을 마치면 쿠키가 `~/.klms-mcp/cookies.json`에 저장된다. 세션이 만료되면 다시 로그인 창을 띄운다.
+KLMS ends a session after 3 idle hours. Logging back in needs your password and 2FA, which only you can do. If your laptop sleeps overnight, the 9 AM run will usually ask you to log in again.
 
-## 도구
+Two ways to deal with it:
 
-| 도구 | 내용 |
+1. **Just log in again.** Codex opens the Chrome window with `klms_login`. If you let Chrome save your password the first time, it's one click.
+2. **Keep the session alive with GitHub Actions (optional).**
+
+```sh
+klms-mcp keepalive enable --public
+```
+
+This creates a repo `klms-keepalive` in your GitHub account and opens KLMS from GitHub Actions every 30 minutes, so the session survives while your laptop sleeps. If the GitHub CLI is missing, it installs it (Homebrew or winget) and opens the GitHub login in your browser, with the code already on your clipboard.
+
+How it works, and why the repo is public:
+
+- GitHub's scheduled (cron) runs are unreliable. An hourly schedule ran once in 13 hours when we measured it. So each run touches KLMS and then starts the next run, which waits 30 minutes on an environment wait timer. The wait uses no Actions minutes. Cron only restarts the chain if it ever stops.
+- Wait timers work only on public repos (private repos need GitHub Enterprise). Without `--public`, the command stops and explains before changing anything.
+- The cookie is an Actions secret. It's masked in logs and never given to forks or pull requests. Anyone can see the workflow file, the run times, and the line "KLMS session alive".
+- Only the `klms.kaist.ac.kr` session cookies go to GitHub. Never your password or the KAIST SSO cookies.
+- If the session dies anyway, the run fails and GitHub emails you. Log in again (`klms-mcp login` or `klms_login` in Codex), and the secret is updated and the chain restarts.
+- Turn it off: `klms-mcp keepalive disable`.
+
+## Tools
+
+| Tool | What it does |
 |---|---|
-| `klms_check_session` | 세션 확인 |
-| `klms_login` | Chrome으로 SSO 로그인 |
-| `klms_get_courses` | 수강 과목 |
-| `klms_get_activities` | 과목별 활동 |
-| `klms_get_notifications` | 알림 |
-| `klms_get_notices` | 공지 게시판 |
-| `klms_course_contents` | 과목 전체 콘텐츠 |
-| `klms_assignment_status` | 과제 상태 |
-| `klms_quiz_status` | 퀴즈 상태 |
-| `klms_upcoming_deadlines` | 다가오는 마감 |
-| `klms_download_assignment` | 과제 첨부파일 받기 |
-| `klms_download_course_files` | 과목 자료실 새 파일 받기 |
-| `klms_sweep` | 한 번에 점검: 새 자료와 과제 첨부 받기, 공지 전문 저장, 마감과 과제 본문, 공지에 적힌 일정, 새 성적 |
+| `klms_sweep` | One call for everything: new course files and assignment attachments, all notices saved as files, deadlines with assignment details, dates found in notices, new grades |
+| `klms_upcoming_deadlines` | Upcoming assignment and quiz deadlines across all courses |
+| `klms_get_courses` | Your current courses |
+| `klms_get_activities` | Activities in one course (assignments, quizzes, boards, files) |
+| `klms_course_contents` | Full course contents: sections, modules, files |
+| `klms_assignment_status` | One assignment: due date, submission status, grade, attachments |
+| `klms_quiz_status` | One quiz: open and close times, attempts, grade |
+| `klms_get_notices` | Course notice boards. New posts by default, or all with `include_seen` |
+| `klms_get_notifications` | KLMS notifications |
+| `klms_download_assignment` | Download an assignment's attachments |
+| `klms_download_course_files` | Download new course files |
+| `klms_check_session` | Is the saved session still alive? |
+| `klms_login` | Open Chrome for KAIST SSO login |
 
-`klms_sweep`와 받기 도구는 `dest_dir` 아래에 `과목/lectures`, `과목/assignments`, `과목/notices`로 나눠 저장한다. Codex 프로젝트 폴더를 `dest_dir`로 주면 그 프로젝트에서 바로 "수리통계학 중간고사 분포 보고 기말 공부법 알려줘" 같은 질문을 할 수 있다. 처음 돌 때는 기존 공지를 전부 파일로 받아 두지만 "새 공지"로 알리지는 않는다.
+Download tools and `klms_sweep` take a `dest_dir`. Files go under `<dest_dir>/<course>/{lectures,assignments,notices}`. Pass your project folder so Codex can read them later. On the first run, existing notices are saved as files but not reported as "new".
 
-받기는 내 컴퓨터에만 저장한다. 과제 제출 같은 KLMS에 쓰는 도구는 없다.
+## Privacy
 
-## 로그인 유지
+- Cookies, state, and the login browser profile stay in `~/.klms-mcp/` on your computer (set `KLMS_MCP_HOME` to move it). The only exception is the optional keepalive above.
+- Downloaded files stay where you put them.
+- No server in between. Codex talks to klms-mcp on your laptop, and klms-mcp talks to KLMS.
 
-KLMS 세션은 3시간 동안 요청이 없으면 끊기고, 끊긴 뒤에는 KAIST SSO가 비밀번호를 다시 요구한다. 노트북이 밤새 잠들면 아침에는 보통 다시 로그인해야 한다.
-세션이 끊겼으면 Codex가 `klms_login`으로 Chrome 창을 띄운다. 처음 로그인할 때 그 창에서 Chrome 비밀번호 저장을 해 두면, 다음부터는 자동 완성된 상태에서 로그인 버튼만 누르면 된다.
-터미널에서는 `klms-mcp status`로 세션을 확인하고 `klms-mcp login`으로 다시 로그인한다.
+## Other MCP clients
 
-### GitHub로 세션 살려 두기
+klms-mcp speaks MCP over stdio. Install it once (`uv tool install git+https://github.com/hwan809/klms-mcp`), then point your client at the `klms-mcp` command. For example, Cursor (`~/.cursor/mcp.json`):
 
-```sh
-klms-mcp keepalive enable
+```json
+{
+  "mcpServers": {
+    "klms": { "command": "klms-mcp" }
+  }
+}
 ```
 
-GitHub 계정이 필요하다. [GitHub CLI](https://cli.github.com/)가 없으면 Homebrew(macOS)나 winget(Windows)으로 설치하고, 로그인이 안 돼 있으면 브라우저 승인 창을 연다. 승인 코드는 클립보드에 넣어 둔다. 그다음 내 계정에 리포 `klms-keepalive`를 만들고, GitHub Actions가 30분마다 KLMS를 한 번 열어 세션이 끊기지 않게 한다.
-
-GitHub 예약 실행(cron)은 믿을 수 없다. 매시간으로 걸어 둔 실측에서 13시간 동안 1번만 돌았다. 그래서 cron에 기대지 않고, 실행이 끝날 때 다음 실행을 건다. 다음 실행은 `keepalive` environment의 30분 대기 뒤에 시작하고, 이 대기 시간은 Actions 사용량으로 치지 않는다. cron은 체인이 멈췄을 때 다시 시작하는 용도로만 둔다.
-
-- 대기 타이머는 public 리포에서만 된다(private은 GitHub Enterprise 전용). 그래서 `klms-mcp keepalive enable --public`으로 켠다. `--public` 없이 실행하면 public으로 바꾸기 전에 멈추고 이유를 알려준다.
-- public이어도 쿠키는 Secret이라 로그에서 가려지고, fork나 PR에는 전달되지 않는다. 남에게 보이는 것은 워크플로 파일, 실행 시각, "KLMS session alive" 한 줄이다.
-- Secret에는 klms.kaist.ac.kr 쿠키만 들어간다. KAIST SSO 쿠키와 비밀번호는 올리지 않는다.
-- 세션이 끊기면 실행이 실패하고 GitHub가 메일을 보낸다. 체인도 거기서 멈춘다. `klms-mcp login`(또는 Codex의 `klms_login`)을 하면 Secret을 새 쿠키로 바꾸고 체인을 다시 건다.
-- 끄기: `klms-mcp keepalive disable`
-
-## 데이터
-
-- 쿠키, 상태, 로그인 브라우저 프로필은 모두 이 컴퓨터의 `~/.klms-mcp/`에만 있다. 다른 곳으로 보내지 않는다.
-- 위치를 바꾸려면 `KLMS_MCP_HOME` 환경변수를 쓴다.
-
-## 제거
+## Command line
 
 ```sh
-klms-mcp uninstall          # Codex 설정에서 뺀다
-uv tool uninstall klms-mcp  # 프로그램을 지운다
-rm -rf ~/.klms-mcp          # 쿠키와 상태를 지운다
+klms-mcp install                 # install as a uv tool and register in ~/.codex/config.toml (backs up the old file)
+klms-mcp login                   # open Chrome for KAIST SSO
+klms-mcp status                  # is the session alive?
+klms-mcp keepalive enable --public | disable | status
+klms-mcp uninstall               # remove it from the Codex config
 ```
+
+## Troubleshooting
+
+- **Codex doesn't see the KLMS tools.** Start a new chat after installing. Codex loads MCP servers when a chat starts.
+- **The 9 AM run says to log in.** The session expired overnight. Log in again, or turn on the keepalive.
+- **"Session lock" errors.** Run `klms_login` once to get a fresh session.
+
+## Uninstall
+
+```sh
+klms-mcp keepalive disable  # if you turned it on
+klms-mcp uninstall          # remove from Codex config
+uv tool uninstall klms-mcp  # remove the program
+rm -rf ~/.klms-mcp          # remove cookies and state
+```
+
+## Disclaimer
+
+An unofficial student project, not affiliated with KAIST. It uses your own login and reads only what you can already see in KLMS. Use it within KAIST's rules for your account.
