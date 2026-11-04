@@ -90,7 +90,8 @@ README = """# klms-keepalive
 
 
 def _gh(*args, input=None, check=True):
-    return subprocess.run(["gh", *args], input=input, capture_output=True, text=True, check=check)
+    return subprocess.run(["gh", *args], input=input, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", check=check)
 
 
 def _install_gh():
@@ -110,7 +111,7 @@ def _install_gh():
 def _device_login(args: list[str]):
     """gh 의 브라우저 로그인. Codex 같은 비대화형 셸에서도 되도록 코드를 클립보드에 넣고 창을 연다."""
     p = subprocess.Popen(["gh", *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                         stderr=subprocess.STDOUT, text=True, env={**os.environ, "BROWSER": "true"})
+                         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env={**os.environ, "BROWSER": "true"})
     opened = False
     for line in p.stdout:
         m = re.search(r"one-time code: ([A-Z0-9]{4}-[A-Z0-9]{4})", line)
@@ -187,7 +188,7 @@ def _start(repo: str, now: bool = True) -> bool:
 
 def _repo() -> str | None:
     try:
-        st = json.loads(STATE.read_text())
+        st = json.loads(STATE.read_text(encoding="utf-8"))
         return None if st.get("disabled") else st["repo"]
     except (OSError, ValueError, KeyError):
         pass
@@ -198,7 +199,7 @@ def _repo() -> str | None:
     user = _gh("api", "user", "--jq", ".login", check=False).stdout.strip()
     repo = f"{user}/{REPO_NAME}"
     if user and _gh("api", f"repos/{repo}/contents/{WORKFLOW_PATH}", "--jq", ".sha", check=False).returncode == 0:
-        STATE.write_text(json.dumps({"repo": repo}))
+        STATE.write_text(json.dumps({"repo": repo}), encoding="utf-8")
         return repo
     return None
 
@@ -270,7 +271,7 @@ def enable(make_public: bool = False):
 
     print("[4/5] Secret 넣기 (KLMS 쿠키만, 화면에 출력하지 않음)")
     push_secret(repo)
-    STATE.write_text(json.dumps({"repo": repo}))
+    STATE.write_text(json.dumps({"repo": repo}), encoding="utf-8")
 
     print("[5/5] 첫 실행으로 확인")
     before = (_latest_run(repo) or {}).get("databaseId") or 0  # 첫 설치면 이력이 없다
@@ -307,7 +308,7 @@ def disable():
     for r in json.loads(out or "[]"):
         if r["status"] != "completed":
             _gh("run", "cancel", str(r["databaseId"]), "--repo", repo, check=False)
-    STATE.write_text(json.dumps({"repo": repo, "disabled": True}))
+    STATE.write_text(json.dumps({"repo": repo, "disabled": True}), encoding="utf-8")
     print(f"껐습니다. Secret 을 지우고 워크플로를 멈췄습니다. 리포까지 지우려면: gh repo delete {repo}")
 
 

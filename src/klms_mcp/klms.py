@@ -442,6 +442,23 @@ def _make_session() -> requests.Session:
 # 먼저 타임아웃돼도 서버는 요청을 계속 처리하며 잠금을 붙들고 있어서 이렇게 된다.
 # 사람이 재로그인해 새 세션을 받는 것 말고는 푸는 방법이 없다.
 _SESSION_LOCK_MARKER = "Unable to obtain session lock"
+def _read_text(path: Path) -> str:
+    """UTF-8 로 읽는다. Windows 에서 예전 버전이 CP949 등 로캘 인코딩으로 쓴 파일도 읽는다.
+    줄바꿈은 read_text() 처럼 \n 으로 맞춘다(Windows 는 \r\n 으로 저장한다)."""
+    return _decode(path.read_bytes()).replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _decode(raw: bytes) -> str:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        import locale
+        try:
+            return raw.decode(locale.getpreferredencoding(False))
+        except (UnicodeDecodeError, LookupError):
+            return raw.decode("utf-8", errors="replace")
+
+
 _LOCK_HINT = ("세션 잠금(Moodle session lock) — klms_login 으로 새 세션을 받으세요. "
               "서버 장애가 아니라 이 세션만 잠긴 상태입니다")
 
@@ -1030,7 +1047,7 @@ def _save_notice_assets(notice: dict, asset_dir: Path, session) -> dict:
         return saved
     asset_dir.mkdir(parents=True, exist_ok=True)
     if html:
-        (asset_dir / "original.html").write_text(html)
+        (asset_dir / "original.html").write_text(html, encoding="utf-8")
     if session is None:
         return saved
     used: set[str] = set()
@@ -1081,7 +1098,7 @@ def _existing_notice_file(out_dir: Path, url: str):
         return None, False
     for path in sorted(out_dir.glob("*.md")):
         try:
-            text = path.read_text()
+            text = _read_text(path)
         except OSError:
             continue
         # 'id=123' 이 'id=1234' 안에 들어 있다고 같은 공지로 치면 안 된다.
@@ -1144,10 +1161,10 @@ def _save_notice(notice: dict, base, session=None) -> Optional[str]:
         "---\n\n"
         f"{body}\n"
     )
-    if path.is_file() and path.read_text() == text:
+    if path.is_file() and _read_text(path) == text:
         return str(path)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     return str(path)
 
 

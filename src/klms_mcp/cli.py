@@ -135,7 +135,17 @@ def dashboard_cmd(args):
         webbrowser.open(out.as_uri())
 
 
+def _utf8_stdio():
+    """Windows 콘솔 기본 인코딩(CP949 등)에서 특수문자 출력이 UnicodeEncodeError 로 죽지 않게."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main():
+    _utf8_stdio()
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
     if cmd == "install":
         install()
