@@ -123,7 +123,9 @@ def klms_download_course_files(course_filter: Optional[str] = None, dest_dir: Op
       "받은 파일은 <dest_dir>/<과목>/{lectures,assignments,notices}/ 로 나뉩니다. "
       "'KLMS 확인', 'KLMS 정리' 같은 요청에는 개별 도구 대신 이 도구 하나를 쓰세요. "
       "dest_dir 은 작업 폴더(프로젝트)의 절대 경로를 넘기세요. 없으면 ~/.klms-mcp/downloads. "
-      "dest_dir 이 있으면 결과를 <dest_dir>/_klms/last_sweep.json 에 쓰고 <dest_dir>/dashboard.html 을 다시 그립니다.")
+      "dest_dir 이 있으면 결과를 <dest_dir>/_klms/last_sweep.json 에 쓰고 <dest_dir>/dashboard.html 을 다시 그립니다. "
+      "deadlines 의 prepare=true 는 준비해야 할 과제입니다: KLMS 미제출 과제와, Gradescope 처럼 KLMS 밖에서 내서 "
+      "제출 여부를 알 수 없는 과제. 퀴즈와 시험은 false 입니다. 과제 폴더를 만들 때는 이 표시를 따르세요.")
 def klms_sweep(days_ahead: int = 21, dest_dir: Optional[str] = None,
                include_seen_notices: bool = False, fetch_external: bool = True) -> dict:
     dest = Path(dest_dir).expanduser() if dest_dir else None

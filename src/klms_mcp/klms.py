@@ -3219,6 +3219,14 @@ def sweep(
 
     external_submit = [d for d in deadlines if d.get("external_submit")]
 
+    # '어떤 과제를 준비할지' 를 호출하는 모델의 해석에 맡기면 모델마다 다르다
+    # (실측 2026-11-04: 같은 결과를 보고 한 모델은 Gradescope 과제 HW7/HW8 을
+    # 준비했고, 다른 모델은 '제출 여부를 모른다' 며 건너뛰었다). 여기서 정해서 넘긴다.
+    prepare_ids = {id(d) for d in unsubmitted + external_submit}
+    for d in deadlines:
+        d["prepare"] = id(d) in prepare_ids
+    prepare = [d for d in deadlines if d["prepare"]]
+
     # 4. 성적: 알림에 안 뜨니 성적부를 직접 읽어 state 에 쌓는다.
     new_grades: list[dict] = []
     gr = get_grades()
@@ -3238,6 +3246,7 @@ def sweep(
         "deadlines": len(deadlines),
         "unsubmitted": len(unsubmitted),
         "external_submit": len(external_submit),
+        "prepare": len(prepare),
         "notice_schedule": len(from_notices),
         "external_fetched": external_fetched,
         "new_grades": len(new_grades),
@@ -3251,6 +3260,9 @@ def sweep(
         + (f", 외부 제출 {summary['external_submit']}" if external_submit else "")
         + ")",
     ]
+    if prepare:
+        bits.append("준비할 과제(prepare=true): " + ", ".join(
+            f"{d.get('course')} {d.get('name')}" for d in prepare))
     if from_notices:
         bits.append(f"공지에서 읽은 일정 {len(from_notices)}건")
     if external_fetched:

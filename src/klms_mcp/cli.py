@@ -120,14 +120,17 @@ def sweep_cmd(args):
     out, page = dashboard.save(dest, r)
     print(r.get("message", ""))
     for d in r.get("deadlines", []):
-        print(f"- {d.get('due_date_iso') or d.get('due_date') or '?'}  {d.get('course')}  {d.get('name')}")
+        mark = "  [prepare]" if d.get("prepare") else ""
+        print(f"- {d.get('due_date_iso') or d.get('due_date') or '?'}  {d.get('course')}  {d.get('name')}{mark}")
+    if any(d.get("prepare") for d in r.get("deadlines", [])):
+        print("[prepare] = 준비할 과제 (KLMS 미제출, 또는 Gradescope 처럼 KLMS 밖에서 제출). "
+              "assignments to prepare: not submitted on KLMS, or submitted outside KLMS.")
     print(f"전체 결과: {out}")
     print(f"대시보드: {page}")
 
 
 def dashboard_cmd(args):
     import argparse
-    import webbrowser
     ap = argparse.ArgumentParser(prog="klms-mcp dashboard")
     ap.add_argument("--dest", default=".", help="sweep 결과가 있는 폴더 (기본: 현재 폴더)")
     ap.add_argument("--open", action="store_true", help="만든 뒤 브라우저로 연다")
@@ -135,8 +138,22 @@ def dashboard_cmd(args):
     from klms_mcp import dashboard
     out = dashboard.render(Path(a.dest))
     print(f"대시보드: {out}")
-    if a.open:
-        webbrowser.open(out.as_uri())
+    if a.open and not _open_in_browser(out):
+        print("브라우저를 열지 못했습니다. 샌드박스 안에서 실행했다면 샌드박스 밖에서 다시 실행하세요.\n"
+              "Could not open the browser. If this ran inside a sandbox, run it again outside the sandbox.")
+        sys.exit(1)
+
+
+def _open_in_browser(path: Path) -> bool:
+    """webbrowser 는 macOS 에서 osascript 를 거치는데, 샌드박스 안에서는 실패해도
+    조용히 넘어간다 (실측 2026-11-04: 오류만 찍고 exit 0). 실패를 알 수 있게 연다."""
+    try:
+        if sys.platform == "darwin":
+            return subprocess.run(["open", str(path)], capture_output=True).returncode == 0
+        import webbrowser
+        return webbrowser.open(path.resolve().as_uri())
+    except Exception:
+        return False
 
 
 def _utf8_stdio(line_buffered: bool = False):
