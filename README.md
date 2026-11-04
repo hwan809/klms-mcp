@@ -20,7 +20,7 @@ It only reads KLMS. There is no tool that submits or changes anything.
 2. Open that folder as a project in the Codex app.
 3. Paste this into a new chat:
 
-> Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` (install uv first if it's missing), then run `klms-mcp sweep --dest .` to pull my KLMS into this folder now. Using `_klms/last_sweep.json`, for each assignment still due, make a `<course>/<assignment>` folder with its attachments and a START_HERE.md (deadline, submission format, what to do). Then run `klms-mcp dashboard --open`. Finally, create a weekday 9 AM automation in this project that runs KLMS MCP's `klms_sweep` with `dest_dir` set to this folder, repeats the assignment setup, runs `klms-mcp dashboard`, and tells me what's new.
+> Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` (install uv first if it's missing) and wait until I finish the KLMS login in Chrome. Then run `klms-mcp sweep --dest .` to pull my KLMS into this folder now. klms-mcp needs network access, so run its commands outside the sandbox. Using `_klms/last_sweep.json`, for each assignment still due, make a `<course>/<assignment>` folder with its attachments and a START_HERE.md (deadline, submission format, what to do). Then run `klms-mcp dashboard --open`. Finally, create a weekday 9 AM automation in this project that runs KLMS MCP's `klms_sweep` with `dest_dir` set to this folder, repeats the assignment setup, runs `klms-mcp dashboard`, and tells me what's new.
 
 A Chrome window opens for KAIST SSO. Finish the login there (including 2FA). The first sweep takes about 10 minutes, then the dashboard opens in your browser.
 
