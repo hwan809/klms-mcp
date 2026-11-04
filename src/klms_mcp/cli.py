@@ -171,7 +171,14 @@ def main():
     elif cmd == "status":
         from klms_mcp import klms
         r = klms.check_session()
-        print("세션 살아 있음" if r.get("session_valid") else f"로그인 필요: {r.get('error', '')}")
+        if r.get("session_valid"):
+            print("세션 살아 있음")
+        elif not r.get("success"):
+            print(f"확인 실패: {r.get('error', '')}")
+            sys.exit(1)
+        else:
+            print("로그인 필요: klms-mcp login")
+            sys.exit(1)
         sys.exit(0 if r.get("session_valid") else 1)
     elif cmd == "serve":
         from klms_mcp.server import serve

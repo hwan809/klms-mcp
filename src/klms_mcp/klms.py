@@ -459,6 +459,10 @@ def _decode(raw: bytes) -> str:
             return raw.decode("utf-8", errors="replace")
 
 
+NETWORK_HINT = ("KLMS(klms.kaist.ac.kr)에 연결하지 못했습니다. 로그인 문제가 아니라 네트워크 문제입니다. "
+                "인터넷 연결을 확인하세요. Codex 같은 에이전트의 샌드박스 안에서 실행했다면 "
+                "네트워크가 막혀 있으니 샌드박스 밖에서(권한을 높여) 다시 실행하세요")
+
 _LOCK_HINT = ("세션 잠금(Moodle session lock) — klms_login 으로 새 세션을 받으세요. "
               "서버 장애가 아니라 이 세션만 잠긴 상태입니다")
 
@@ -728,7 +732,7 @@ def check_session() -> dict:
         elif idle is not None and idle >= _IDLE_WARN_HOURS:
             # 만료를 맞고 나서 알면 이미 조회가 실패한 뒤다. 미리 알린다.
             message = (f"세션 유효하지만 {idle:.0f}시간 유휴 — keepalive 가 도는지 "
-                       f"확인하세요 (./launchd.sh status)")
+                       f"확인하세요 (klms-mcp keepalive status)")
         else:
             message = "세션 유효"
 
@@ -743,6 +747,9 @@ def check_session() -> dict:
         })
     except FileNotFoundError:
         return _err("cookies.json 없음 — login() 을 먼저 실행하세요.")
+    except requests.exceptions.RequestException as e:
+        # 세션 문제가 아니다. 다시 로그인해도 해결되지 않으니 섞어서 보고하면 안 된다.
+        return {**_err(NETWORK_HINT + f" ({type(e).__name__})"), "network_error": True}
     except Exception as e:
         return _err(str(e))
 
@@ -3054,8 +3061,11 @@ def sweep(
     fetch_failed = False
 
     sess = check_session()
+    if not sess.get("success"):
+        return _err(sess.get("error") or "세션 확인 실패")
     if not sess.get("session_valid"):
-        return _err("세션 만료 — klms_login() 을 먼저 실행하세요")
+        return _err("KLMS 로그인이 필요합니다(로그인 전이거나 세션 만료). "
+                    "`klms-mcp login` 또는 klms_login 으로 Chrome 에서 로그인한 뒤 다시 실행하세요.")
 
     # 1. 새 파일 + 갱신된 파일
     downloaded: list[dict] = []
