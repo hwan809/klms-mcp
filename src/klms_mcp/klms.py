@@ -2667,12 +2667,14 @@ def _save_assign_attachments(course: str, urls: list[str], base) -> tuple[list[s
 
     Returns: (저장된 경로 전부, 이번에 새로 받은 파일의 downloaded 항목)
     """
-    out_dir = _course_dest_dir(course, Path(base)) / "assignments"
+    course_dir = _course_dest_dir(course, Path(base))
+    out_dir = course_dir / "assignments"
     paths: list[str] = []
     new_files: list[dict] = []
     session = None
     for url in urls:
-        dest = out_dir / _asset_name(url)
+        # 사람이나 Codex 가 과제 폴더로 옮겨 둔 사본이 있으면 그걸 쓴다. 다시 받으면 같은 파일이 두 벌 생긴다.
+        dest = _find_local_copy(course_dir, _asset_name(url)) or out_dir / _asset_name(url)
         if not dest.is_file():
             try:
                 session = session or _make_session()

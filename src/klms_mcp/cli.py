@@ -3,6 +3,8 @@ klms-mcp install    -> install as a uv tool and register it in Codex (~/.codex/c
 klms-mcp uninstall  -> remove it from Codex config
 klms-mcp login      -> open Chrome for KAIST SSO login
 klms-mcp status     -> check whether the saved KLMS session is alive
+klms-mcp sweep [--dest DIR] [--days N]
+                    -> run klms_sweep now: files, notices, deadlines into DIR (default: .)
 klms-mcp keepalive enable [--public]|disable|status
                     -> keep the session alive from GitHub Actions (every 30 min)
 """
@@ -94,6 +96,28 @@ def uninstall():
     print(f"Codex 설정에서 뺐습니다: {cfg}\n프로그램까지 지우려면: uv tool uninstall klms-mcp")
 
 
+def sweep_cmd(args):
+    """klms_sweep 를 셸에서 돌린다. 설치한 그 대화에서는 MCP 도구가 아직 안 보여서 필요하다."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="klms-mcp sweep")
+    ap.add_argument("--dest", default=".", help="저장 위치 (기본: 현재 폴더)")
+    ap.add_argument("--days", type=int, default=21, help="마감 조회 범위(일)")
+    a = ap.parse_args(args)
+    from klms_mcp import klms
+    dest = Path(a.dest).expanduser().resolve()
+    r = klms.sweep(days_ahead=a.days, dest_dir=str(dest))
+    if not r.get("success"):
+        print(f"실패: {r.get('error')}")
+        sys.exit(1)
+    out = dest / "_klms" / "last_sweep.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(r, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    print(r.get("message", ""))
+    for d in r.get("deadlines", []):
+        print(f"- {d.get('due_date_iso') or d.get('due_date') or '?'}  {d.get('course')}  {d.get('name')}")
+    print(f"전체 결과: {out}")
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
     if cmd == "install":
@@ -113,6 +137,8 @@ def main():
             keepalive.enable(make_public="--public" in sys.argv)
         else:
             {"disable": keepalive.disable, "status": keepalive.status}[sub]()
+    elif cmd == "sweep":
+        sweep_cmd(sys.argv[2:])
     elif cmd == "status":
         from klms_mcp import klms
         r = klms.check_session()
