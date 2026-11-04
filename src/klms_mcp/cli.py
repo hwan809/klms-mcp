@@ -23,6 +23,10 @@ from importlib import metadata
 from pathlib import Path
 
 SERVER = "klms"
+LOGIN_WAIT = (
+    "Chrome 창에서 KAIST SSO 로그인을 마쳐 주세요. 이 명령은 로그인이 끝나면 저절로 끝납니다(최대 3분).\n"
+    "Waiting for KAIST SSO login in Chrome. This command exits by itself when login finishes (max 3 min); keep waiting for it."
+)
 
 
 def _codex_config() -> Path:
@@ -86,7 +90,7 @@ def install():
 
     from klms_mcp import klms
     if "--no-login" not in sys.argv and not klms.check_session().get("session_valid"):
-        print("\nChrome 창에서 KAIST SSO 로그인을 마쳐 주세요. (최대 3분)")
+        print(f"\n{LOGIN_WAIT}")
         r = klms.login(timeout_seconds=180)
         print("로그인 완료" if r.get("success") else f"로그인 실패: {r.get('error')} (나중에 klms_login 으로 다시)")
     print("\n완료. Codex 새 대화에서 이렇게 말해 보세요:\n  이번 주 KLMS 마감 알려줘")
@@ -135,25 +139,26 @@ def dashboard_cmd(args):
         webbrowser.open(out.as_uri())
 
 
-def _utf8_stdio():
-    """Windows 콘솔 기본 인코딩(CP949 등)에서 특수문자 출력이 UnicodeEncodeError 로 죽지 않게."""
+def _utf8_stdio(line_buffered: bool = False):
+    """Windows 콘솔 기본 인코딩(CP949 등)에서 특수문자 출력이 UnicodeEncodeError 로 죽지 않게.
+    line_buffered: 파이프로 실행될 때(Codex 등)도 안내 문구가 바로 보이게."""
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=line_buffered)
         except (AttributeError, ValueError):
             pass
 
 
 def main():
-    _utf8_stdio()
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
+    _utf8_stdio(line_buffered=cmd != "serve")
     if cmd == "install":
         install()
     elif cmd == "uninstall":
         uninstall()
     elif cmd == "login":
         from klms_mcp import klms
-        print("Chrome 창에서 KAIST SSO 로그인을 마쳐 주세요. (최대 3분)")
+        print(LOGIN_WAIT)
         r = klms.login(timeout_seconds=180)
         print("로그인 완료" if r.get("success") else f"로그인 실패: {r.get('error')}")
         sys.exit(0 if r.get("success") else 1)
