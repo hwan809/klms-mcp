@@ -20,9 +20,9 @@ It only reads KLMS. There is no tool that submits or changes anything.
 2. Open that folder as a project in the Codex app.
 3. Paste this into a new chat:
 
-> Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` (install uv first if it's missing). Then create a weekday 9 AM automation in this project: run KLMS MCP's `klms_sweep` with `dest_dir` set to this project folder, and for each assignment still due, put its attachments in a `<course>/<assignment>` folder with a START_HERE.md covering the deadline, submission format, and what to do.
+> Run `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` (install uv first if it's missing), then run `klms-mcp sweep --dest .` to pull my KLMS into this folder now. Using `_klms/last_sweep.json`, for each assignment still due, make a `<course>/<assignment>` folder with its attachments and a START_HERE.md (deadline, submission format, what to do). Then run `klms-mcp dashboard --open`. Finally, create a weekday 9 AM automation in this project that runs KLMS MCP's `klms_sweep` with `dest_dir` set to this folder, repeats the assignment setup, runs `klms-mcp dashboard`, and tells me what's new.
 
-A Chrome window opens for KAIST SSO. Finish the login there (including 2FA). The first sweep takes about 10 minutes.
+A Chrome window opens for KAIST SSO. Finish the login there (including 2FA). The first sweep takes about 10 minutes, then the dashboard opens in your browser.
 
 ### What you get
 
@@ -35,6 +35,7 @@ A Chrome window opens for KAIST SSO. Finish the login there (including 2FA). The
 │   └── Assignment 4/
 │       ├── 2026F_CS371_assignment4.ipynb
 │       └── START_HERE.md  deadline, late policy, submission format, every TODO
+├── dashboard.html         deadlines, timeline, recent notices (open in a browser)
 ├── Mathematical Statistics
 │   └── ...
 └── ...
@@ -119,6 +120,8 @@ klms-mcp speaks MCP over stdio. Install it once (`uv tool install git+https://gi
 klms-mcp install                 # install as a uv tool and register in ~/.codex/config.toml (backs up the old file)
 klms-mcp login                   # open Chrome for KAIST SSO
 klms-mcp status                  # is the session alive?
+klms-mcp sweep --dest .          # check everything now, save _klms/last_sweep.json and dashboard.html
+klms-mcp dashboard --open        # redraw dashboard.html from the last sweep and open it
 klms-mcp keepalive enable --public | disable | status
 klms-mcp uninstall               # remove it from the Codex config
 ```

@@ -4,7 +4,10 @@ klms-mcp uninstall  -> remove it from Codex config
 klms-mcp login      -> open Chrome for KAIST SSO login
 klms-mcp status     -> check whether the saved KLMS session is alive
 klms-mcp sweep [--dest DIR] [--days N]
-                    -> run klms_sweep now: files, notices, deadlines into DIR (default: .)
+                    -> run klms_sweep now: files, notices, deadlines into DIR (default: .),
+                       then write DIR/dashboard.html
+klms-mcp dashboard [--dest DIR] [--open]
+                    -> rebuild DIR/dashboard.html from the last sweep
 klms-mcp keepalive enable [--public]|disable|status
                     -> keep the session alive from GitHub Actions (every 30 min)
 """
@@ -109,13 +112,27 @@ def sweep_cmd(args):
     if not r.get("success"):
         print(f"실패: {r.get('error')}")
         sys.exit(1)
-    out = dest / "_klms" / "last_sweep.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(r, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    from klms_mcp import dashboard
+    out, page = dashboard.save(dest, r)
     print(r.get("message", ""))
     for d in r.get("deadlines", []):
         print(f"- {d.get('due_date_iso') or d.get('due_date') or '?'}  {d.get('course')}  {d.get('name')}")
     print(f"전체 결과: {out}")
+    print(f"대시보드: {page}")
+
+
+def dashboard_cmd(args):
+    import argparse
+    import webbrowser
+    ap = argparse.ArgumentParser(prog="klms-mcp dashboard")
+    ap.add_argument("--dest", default=".", help="sweep 결과가 있는 폴더 (기본: 현재 폴더)")
+    ap.add_argument("--open", action="store_true", help="만든 뒤 브라우저로 연다")
+    a = ap.parse_args(args)
+    from klms_mcp import dashboard
+    out = dashboard.render(Path(a.dest))
+    print(f"대시보드: {out}")
+    if a.open:
+        webbrowser.open(out.as_uri())
 
 
 def main():
@@ -139,6 +156,8 @@ def main():
             {"disable": keepalive.disable, "status": keepalive.status}[sub]()
     elif cmd == "sweep":
         sweep_cmd(sys.argv[2:])
+    elif cmd == "dashboard":
+        dashboard_cmd(sys.argv[2:])
     elif cmd == "status":
         from klms_mcp import klms
         r = klms.check_session()

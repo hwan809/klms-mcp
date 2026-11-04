@@ -122,12 +122,21 @@ def klms_download_course_files(course_filter: Optional[str] = None, dest_dir: Op
       "마감(과제 본문과 첨부 포함), 공지에 적힌 일정, 새 성적을 돌려줍니다. "
       "받은 파일은 <dest_dir>/<과목>/{lectures,assignments,notices}/ 로 나뉩니다. "
       "'KLMS 확인', 'KLMS 정리' 같은 요청에는 개별 도구 대신 이 도구 하나를 쓰세요. "
-      "dest_dir 은 작업 폴더(프로젝트)의 절대 경로를 넘기세요. 없으면 ~/.klms-mcp/downloads.")
+      "dest_dir 은 작업 폴더(프로젝트)의 절대 경로를 넘기세요. 없으면 ~/.klms-mcp/downloads. "
+      "dest_dir 이 있으면 결과를 <dest_dir>/_klms/last_sweep.json 에 쓰고 <dest_dir>/dashboard.html 을 다시 그립니다.")
 def klms_sweep(days_ahead: int = 21, dest_dir: Optional[str] = None,
                include_seen_notices: bool = False, fetch_external: bool = True) -> dict:
-    return klms.sweep(days_ahead=days_ahead,
-                      dest_dir=str(Path(dest_dir).expanduser()) if dest_dir else None,
-                      include_seen_notices=include_seen_notices, fetch_external=fetch_external)
+    dest = Path(dest_dir).expanduser() if dest_dir else None
+    r = klms.sweep(days_ahead=days_ahead, dest_dir=str(dest) if dest else None,
+                   include_seen_notices=include_seen_notices, fetch_external=fetch_external)
+    if dest and r.get("success"):
+        from klms_mcp import dashboard
+        try:
+            _, page = dashboard.save(dest, r)
+            r["dashboard"] = str(page)
+        except Exception as e:  # 대시보드 실패가 sweep 결과를 막지 않게
+            r["dashboard_error"] = str(e)
+    return r
 
 
 def serve():

@@ -20,9 +20,9 @@ KLMS는 읽기만 합니다. 과제 제출처럼 KLMS에 무언가를 쓰는 도
 2. Codex 앱에서 그 폴더를 프로젝트로 엽니다.
 3. 새 대화에 아래를 붙여 넣습니다.
 
-> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. 그다음 이 프로젝트에 평일 아침 9시 자동화를 만들어줘. KLMS MCP의 `klms_sweep`을 `dest_dir`를 이 프로젝트 폴더로 해서 돌리고, 마감이 남은 과제마다 `과목/과제명` 폴더에 첨부를 모으고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 써줘.
+> `uvx --from git+https://github.com/hwan809/klms-mcp klms-mcp install` 실행해줘. uv가 없으면 먼저 설치해줘. 그다음 `klms-mcp sweep --dest .`로 지금 바로 KLMS를 이 폴더에 받아줘. `_klms/last_sweep.json`을 보고 마감이 남은 과제마다 `과목/과제명` 폴더에 첨부를 모으고 마감, 제출 형식, 해야 할 일을 정리한 START_HERE.md를 써줘. 그리고 `klms-mcp dashboard --open`을 실행해줘. 마지막으로 이 프로젝트에 평일 아침 9시 자동화를 만들어줘. KLMS MCP의 `klms_sweep`을 `dest_dir`를 이 폴더로 해서 돌리고, 과제 정리를 똑같이 하고, `klms-mcp dashboard`를 실행하고, 새로 생긴 것을 알려줘.
 
-Chrome 창이 뜨면 KAIST SSO 로그인(2단계 인증 포함)을 마칩니다. 첫 점검은 10분 정도 걸립니다.
+Chrome 창이 뜨면 KAIST SSO 로그인(2단계 인증 포함)을 마칩니다. 첫 점검은 10분 정도 걸리고, 끝나면 브라우저에 대시보드가 뜹니다.
 
 ### 결과물
 
@@ -35,6 +35,7 @@ Chrome 창이 뜨면 KAIST SSO 로그인(2단계 인증 포함)을 마칩니다.
 │   └── Assignment 4/
 │       ├── 2026F_CS371_assignment4.ipynb
 │       └── START_HERE.md  마감, 지각 규정, 제출 형식, TODO 전체
+├── dashboard.html         마감, 타임라인, 최근 공지 (브라우저로 열기)
 ├── Mathematical Statistics
 │   └── ...
 └── ...
@@ -119,6 +120,8 @@ klms-mcp는 stdio로 MCP를 제공합니다. 한 번 설치하고(`uv tool insta
 klms-mcp install                 # uv tool로 설치하고 ~/.codex/config.toml에 등록 (기존 파일은 백업)
 klms-mcp login                   # Chrome으로 KAIST SSO 로그인
 klms-mcp status                  # 세션이 살아 있는지 확인
+klms-mcp sweep --dest .          # 지금 전체 점검, _klms/last_sweep.json과 dashboard.html 저장
+klms-mcp dashboard --open        # 마지막 점검 결과로 dashboard.html을 다시 그리고 열기
 klms-mcp keepalive enable --public | disable | status
 klms-mcp uninstall               # Codex 설정에서 빼기
 ```
